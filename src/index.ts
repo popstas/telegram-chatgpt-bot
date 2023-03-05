@@ -1,7 +1,11 @@
 import { Telegraf, Context } from 'telegraf';
 import { message } from 'telegraf/filters';
+import { Message } from 'telegraf/types';
 import { ChatGPTAPI } from 'chatgpt';
 import { oraPromise } from 'ora';
+import debounce from "lodash.debounce";
+import throttle from "lodash.throttle";
+import { watchFile } from 'fs';
 // import { readConfig } from './readConfig'; // TODO: Cannot find module 'src/readConfig' imported from src/index.ts
 
 import * as yaml  from 'js-yaml';
@@ -12,10 +16,10 @@ type ConfigType = {
     bot_token: string
     chatgpt_api_key: string
   }
-  settings: {
+  completionParams: {
     temperature?: number
     top_p?: number
-    debug: boolean
+    debug?: boolean
   }
   chats: {
     name: string
@@ -24,11 +28,16 @@ type ConfigType = {
   }[]
 }
 function readConfig (path: string = 'config.yml') {
-  console.log("path:", path);
   const config = yaml.load(readFileSync(path, 'utf8')) as ConfigType;
   return config;
 }
-const config = readConfig();
+const configPath = 'config.yml';
+let config = readConfig(configPath);
+watchFile(configPath, debounce(() => {
+  console.log("reload config...");
+  config = readConfig(configPath);
+  console.log("config:", config);
+}, 2000));
 
 const bot = new Telegraf(config.auth.bot_token);
 console.log('bot started');
@@ -40,16 +49,13 @@ bot.launch();
 
 const api = new ChatGPTAPI({
   apiKey: config.auth.chatgpt_api_key,
-  completionParams: {
-    temperature: config.settings.temperature,
-    top_p: config.settings.top_p
-  },
-  debug: config.settings.debug,
+  completionParams: config.completionParams,
+  debug: config.completionParams.debug,
 });
 
-const history: { [key: number]: Context[] } = {};
+const history: { [key: number]: Message.TextMessage[] } = {};
 
-function addToHistory(msg: Context) {
+function addToHistory(msg: Message.TextMessage) {
   const key = msg.chat?.id || 0;
   if (!history[key]) {
     history[key] = [];
@@ -61,10 +67,19 @@ function getHistory(msg: Context) {
   return history[msg.chat?.id || 0] || [];
 }
 
-function getChatgptAnswer(msg: { text: string }) {
+function getChatgptAnswer(msg: Message.TextMessage) {
   if (!msg.text) return { text: '' };
-  console.log("msg:", message);
-  return oraPromise(api.sendMessage(msg.text));
+  return oraPromise(
+    api.sendMessage(msg.text, {
+      name: msg.from?.username, // TODO: user name from telegram
+      onProgress: throttle(() => {
+        bot.telegram.sendChatAction(msg.chat.id, 'typing');
+      }, 5000),
+    }),
+    {
+      text: 'ChatGPT request...'
+    }
+  );
 }
 
 async function onMessage(ctx: Context) {
@@ -81,17 +96,18 @@ async function onMessage(ctx: Context) {
   }
 
   // console.log("ctx.message.text:", ctx.message?.text);
-  const msg = ctx.message;
+  const msg = ctx.message as Message.TextMessage;
   // addToHistory(msg);
 
   if (chat.prefix) {
     const re = new RegExp(`^${chat.prefix}`, 'i');
-    const isBot = re.test(/*msg.text ||*/ '');
-    if (isBot) return;
+    const isBot = re.test(msg.text || '');
+    if (!isBot) return;
   }
 
-  const res = await getChatgptAnswer(msg as { text: string });
+  const res = await getChatgptAnswer(msg);
   console.log('res:', res);
-  if (!ctx.message || !msg?.chat) return;
+  // TODO: store for parentMessageId
+  // if (!ctx.message || !msg.chat) return;
   return await ctx.telegram.sendMessage(msg.chat.id, res.text);
 }

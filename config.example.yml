@@ -4,11 +4,10 @@ auth:
   bot_token:
   chatgpt_api_key:
 
-settings:
+completionParams: # from https://platform.openai.com/docs/api-reference/chat
   debug: false
-  temperature: 0
-#  systemMessage: You are ChatGPT, a large language model trained by OpenAI. Answer as concisely as possible.\nKnowledge cutoff: 2021-09-01\nCurrent date: ${currentDate}`
-#  top_p: 10
+  temperature: 1 # default 1
+#  top_p: 1 # default 1
 
 chats:
   - name: Chat 1
