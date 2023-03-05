@@ -1,0 +1,19 @@
+bot_name: _bot
+
+auth:
+  bot_token:
+  chatgpt_api_key:
+
+settings:
+  debug: false
+  temperature: 0
+#  systemMessage: You are ChatGPT, a large language model trained by OpenAI. Answer as concisely as possible.\nKnowledge cutoff: 2021-09-01\nCurrent date: ${currentDate}`
+#  top_p: 10
+
+chats:
+  - name: Chat 1
+    id:
+
+  - name: Chat 2
+    id:
+    prefix: бот
