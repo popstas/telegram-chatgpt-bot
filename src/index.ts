@@ -16,7 +16,8 @@ type ConfigType = {
   auth: {
     bot_token: string
     chatgpt_api_key: string
-  }
+  },
+  systemMessage?: string
   completionParams: {
     temperature?: number
     top_p?: number
@@ -25,6 +26,8 @@ type ConfigType = {
     name: string
     id: number
     prefix?: string
+    progPrefix?: string
+    forgetPrefix?: string
   }[]
 }
 function readConfig (path: string = 'config.yml') {
@@ -56,6 +59,9 @@ const api = new ChatGPTAPI({
 const history: { [key: number]: Message.TextMessage[] } = {};
 
 let lastAnswer = {} as ChatMessage | undefined;
+let partialAnswer = '';
+
+let customSystemMessage = config.systemMessage;
 
 function addToHistory(msg: Message.TextMessage) {
   const key = msg.chat?.id || 0;
@@ -71,18 +77,23 @@ function getHistory(msg: Context) {
 
 function getChatgptAnswer(msg: Message.TextMessage) {
   if (!msg.text) return;
-  return oraPromise(
-    api.sendMessage(msg.text, {
-      name: msg.from?.username, // TODO: user name from telegram
-      parentMessageId: lastAnswer?.id,
-      onProgress: throttle(() => {
-        bot.telegram.sendChatAction(msg.chat.id, 'typing');
-      }, 5000),
-    }),
-    {
-      text: 'ChatGPT request...'
-    },
-  );
+
+  let systemMessage = `You answer as concisely as possible for each response. If you are generating a list, do not have too many items.
+Current date: ${new Date().toISOString()}\n\n`;
+    if (customSystemMessage) {
+    systemMessage = customSystemMessage;
+  }
+
+  return api.sendMessage(msg.text, {
+    name: msg.from?.username, // TODO: user name from telegram
+    parentMessageId: lastAnswer?.id,
+    onProgress: throttle((partialResponse) => {
+      partialAnswer += partialResponse.text;
+      console.log(partialResponse.text);
+      bot.telegram.sendChatAction(msg.chat.id, 'typing');
+    }, 1000),
+    systemMessage,
+  });
 }
 
 async function onMessage(ctx: Context) {
@@ -104,13 +115,44 @@ async function onMessage(ctx: Context) {
 
   if (chat.prefix) {
     const re = new RegExp(`^${chat.prefix}`, 'i');
-    const isBot = re.test(msg.text || '');
+    const isBot = re.test(msg.text);
     if (!isBot) return;
   }
 
-  const res = await getChatgptAnswer(msg);
-  console.log('res:', res);
-  lastAnswer = res;
-  // if (!ctx.message || !msg.chat) return;
-  return await ctx.telegram.sendMessage(msg.chat.id, res?.text || 'бот не ответил');
+  // prog system message
+  if (chat.progPrefix) {
+    const re = new RegExp(`^${chat.progPrefix}`, 'i');
+    const isProg = re.test(msg.text);
+    if (isProg) {
+      customSystemMessage = msg.text.replace(chat.progPrefix, 'Ты');
+      return await ctx.telegram.sendMessage(msg.chat.id, 'OK');
+    }
+  }
+
+  // forget thread
+  if (chat.forgetPrefix) {
+    const re = new RegExp(`^${chat.forgetPrefix}`, 'i');
+    const isForget = re.test(msg.text);
+    if (isForget) {
+      lastAnswer = undefined;
+      return await ctx.telegram.sendMessage(msg.chat.id, 'OK');
+    }
+  }
+
+  try {
+    const res = await getChatgptAnswer(msg);
+    partialAnswer = '';
+    console.log('res:', res);
+    lastAnswer = res;
+    // if (!ctx.message || !msg.chat) return;
+    return await ctx.telegram.sendMessage(msg.chat.id, res?.text || 'бот не ответил');
+  } catch (e) {
+    if (partialAnswer !== '') {
+      const answer = `бот ответил частично:\n\n${partialAnswer}`;
+      partialAnswer = '';
+      return await ctx.telegram.sendMessage(msg.chat.id, answer);
+    } else {
+      return await ctx.telegram.sendMessage(msg.chat.id, `бот ответил ошибкой`); // TODO: ${e.message}
+    }
+  }
 }
