@@ -1,7 +1,7 @@
 import { Telegraf, Context } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { Message } from 'telegraf/types';
-import { ChatGPTAPI } from 'chatgpt';
+import { ChatGPTAPI, ChatMessage } from 'chatgpt';
 import { oraPromise } from 'ora';
 import debounce from "lodash.debounce";
 import throttle from "lodash.throttle";
@@ -12,6 +12,7 @@ import * as yaml  from 'js-yaml';
 import { readFileSync } from 'fs';
 
 type ConfigType = {
+  debug?: boolean
   auth: {
     bot_token: string
     chatgpt_api_key: string
@@ -19,7 +20,6 @@ type ConfigType = {
   completionParams: {
     temperature?: number
     top_p?: number
-    debug?: boolean
   }
   chats: {
     name: string
@@ -50,10 +50,12 @@ bot.launch();
 const api = new ChatGPTAPI({
   apiKey: config.auth.chatgpt_api_key,
   completionParams: config.completionParams,
-  debug: config.completionParams.debug,
+  debug: config.debug,
 });
 
 const history: { [key: number]: Message.TextMessage[] } = {};
+
+let lastAnswer = {} as ChatMessage | undefined;
 
 function addToHistory(msg: Message.TextMessage) {
   const key = msg.chat?.id || 0;
@@ -68,17 +70,18 @@ function getHistory(msg: Context) {
 }
 
 function getChatgptAnswer(msg: Message.TextMessage) {
-  if (!msg.text) return { text: '' };
+  if (!msg.text) return;
   return oraPromise(
     api.sendMessage(msg.text, {
       name: msg.from?.username, // TODO: user name from telegram
+      parentMessageId: lastAnswer?.id,
       onProgress: throttle(() => {
         bot.telegram.sendChatAction(msg.chat.id, 'typing');
       }, 5000),
     }),
     {
       text: 'ChatGPT request...'
-    }
+    },
   );
 }
 
@@ -107,7 +110,7 @@ async function onMessage(ctx: Context) {
 
   const res = await getChatgptAnswer(msg);
   console.log('res:', res);
-  // TODO: store for parentMessageId
+  lastAnswer = res;
   // if (!ctx.message || !msg.chat) return;
-  return await ctx.telegram.sendMessage(msg.chat.id, res.text);
+  return await ctx.telegram.sendMessage(msg.chat.id, res?.text || 'бот не ответил');
 }
