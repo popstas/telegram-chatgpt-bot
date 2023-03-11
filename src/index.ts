@@ -21,6 +21,14 @@ type ThreadState = {
 
 const threads = {} as { [key: number]: ThreadState };
 
+type ConfigChatType = {
+  name: string
+  id: number
+  prefix?: string
+  progPrefix?: string
+  forgetPrefix?: string
+}
+
 type ConfigType = {
   debug?: boolean
   auth: {
@@ -33,13 +41,8 @@ type ConfigType = {
     temperature?: number
     top_p?: number
   }
-  chats: {
-    name: string
-    id: number
-    prefix?: string
-    progPrefix?: string
-    forgetPrefix?: string
-  }[]
+  allowedPrivateUsers?: string[]
+  chats: ConfigChatType[]
 }
 function readConfig (path: string = 'config.yml') {
   return yaml.load(readFileSync(path, 'utf8')) as ConfigType;
@@ -94,9 +97,9 @@ function addToHistory(msg: Message.TextMessage) {
   threads[key].history.push(msg);
 }
 
-function getHistory(msg: Context) {
+/*function getHistory(msg: Context) {
   return threads[msg.chat?.id || 0].history || [];
-}
+}*/
 
 function getChatgptAnswer(msg: Message.TextMessage) {
   if (!msg.text) return;
@@ -137,10 +140,14 @@ async function onMessage(ctx: Context) {
     return;
   }
 
-  const chat = config.chats.find(c => c.id == ctx.chat?.id || 0);
-  if (!chat) {
-    console.log('Unknown chat: ', ctx.chat);
-    return;
+  let chat = config.chats.find(c => c.id == ctx.chat?.id || 0) || {} as ConfigChatType;
+  if (!chat.id) {
+    if (ctx.chat?.type === 'private') {
+      const isAllowed = config.allowedPrivateUsers?.includes(ctx.chat?.username || '')
+      if (!isAllowed) {
+        return await ctx.telegram.sendMessage(ctx.chat.id, 'You are not allowed to use this bot');
+      }
+    }
   }
 
   // console.log("ctx.message.text:", ctx.message?.text);

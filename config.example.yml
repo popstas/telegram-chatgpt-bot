@@ -10,6 +10,9 @@ completionParams: # from https://platform.openai.com/docs/api-reference/chat
   temperature: 1 # default 1
 #  top_p: 1 # default 1
 
+allowedPrivateUsers:
+  - popstas
+
 chats:
   - name: Chat 1
     id:
