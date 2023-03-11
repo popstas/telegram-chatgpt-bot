@@ -1,11 +1,12 @@
 bot_name: _bot
+debug: true
+timeoutMs: 60000
 
 auth:
   bot_token:
   chatgpt_api_key:
 
 completionParams: # from https://platform.openai.com/docs/api-reference/chat
-  debug: false
   temperature: 1 # default 1
 #  top_p: 1 # default 1
 

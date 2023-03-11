@@ -28,6 +28,7 @@ type ConfigType = {
     chatgpt_api_key: string
   },
   systemMessage?: string
+  timeoutMs?: number
   completionParams: {
     temperature?: number
     top_p?: number
@@ -41,37 +42,44 @@ type ConfigType = {
   }[]
 }
 function readConfig (path: string = 'config.yml') {
-  const config = yaml.load(readFileSync(path, 'utf8')) as ConfigType;
-  return config;
+  return yaml.load(readFileSync(path, 'utf8')) as ConfigType;
 }
+
 const configPath = 'config.yml';
-let config = readConfig(configPath);
+let config: ConfigType;
+let bot: Telegraf<Context>;
+let api: ChatGPTAPI;
 watchFile(configPath, debounce(() => {
   console.log("reload config...");
   config = readConfig(configPath);
   console.log("config:", config);
 }, 2000));
 
-const bot = new Telegraf(config.auth.bot_token);
-console.log('bot started');
-bot.on('text', onMessage);
-bot.on('channel_post', onMessage);
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-bot.launch();
+function start() {
+  config = readConfig(configPath);
 
-const api = new ChatGPTAPI({
-  apiKey: config.auth.chatgpt_api_key,
-  completionParams: config.completionParams,
-  debug: config.debug,
-});
+  try {
+    api = new ChatGPTAPI({
+      apiKey: config.auth.chatgpt_api_key,
+      completionParams: config.completionParams,
+      debug: config.debug,
+    });
 
-const history: { [key: number]: Message.TextMessage[] } = {};
+    bot = new Telegraf(config.auth.bot_token);
+    console.log('bot started');
+    bot.on('text', onMessage);
+    bot.on('channel_post', onMessage);
+    process.once('SIGINT', () => bot.stop('SIGINT'));
+    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+    bot.launch();
+  }
+  catch(e) {
+    console.log("restart after 5 seconds...");
+    setTimeout(start, 5000);
+  }
+}
 
-let lastAnswer = {} as ChatMessage | undefined;
-let partialAnswer = '';
-
-let customSystemMessage = config.systemMessage;
+start();
 
 function addToHistory(msg: Message.TextMessage) {
   const key = msg.chat?.id || 0;
@@ -99,6 +107,7 @@ Current date: ${new Date().toISOString()}\n\n`;
     systemMessage = threads[msg.chat.id].customSystemMessage || '';
   }
 
+  let typingSent = false;
   return api.sendMessage(msg.text, {
     // name: `${msg.from?.username}`,
     parentMessageId: threads[msg.chat.id].lastAnswer?.id,
@@ -115,6 +124,10 @@ Current date: ${new Date().toISOString()}\n\n`;
     }, 4000),
     systemMessage,
   });
+}
+
+function forgetHistory(chatId: number) {
+  threads[chatId].lastAnswer = undefined;
 }
 
 async function onMessage(ctx: Context) {
@@ -163,10 +176,11 @@ async function onMessage(ctx: Context) {
   try {
     const res = await getChatgptAnswer(msg);
     threads[msg.chat.id].partialAnswer = '';
-    console.log('res:', res);
+    if (config.debug) console.log('res:', res);
     threads[msg.chat.id].lastAnswer = res;
     // if (!ctx.message || !msg.chat) return;
-    return await ctx.telegram.sendMessage(msg.chat.id, res?.text || 'бот не ответил');
+    const text = telegramifyMarkdown(res?.text || 'бот не ответил');
+    return await ctx.telegram.sendMessage(msg.chat.id, text, { parse_mode: 'MarkdownV2' });
   } catch (e) {
     if (threads[msg.chat.id].partialAnswer !== '') {
       const answer = `бот ответил частично и забыл диалог:\n\n${threads[msg.chat.id].partialAnswer}`;
