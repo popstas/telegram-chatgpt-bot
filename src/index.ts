@@ -1,8 +1,9 @@
 import { Telegraf, Context } from 'telegraf';
-import { message } from 'telegraf/filters';
+// import { message } from 'telegraf/filters';
+import telegramifyMarkdown from 'telegramify-markdown';
 import { Message } from 'telegraf/types';
 import { ChatGPTAPI, ChatMessage } from 'chatgpt';
-import { oraPromise } from 'ora';
+// import { oraPromise } from 'ora';
 import debounce from "lodash.debounce";
 import throttle from "lodash.throttle";
 import { watchFile } from 'fs';
@@ -10,6 +11,15 @@ import { watchFile } from 'fs';
 
 import * as yaml  from 'js-yaml';
 import { readFileSync } from 'fs';
+
+type ThreadState = {
+  lastAnswer?: ChatMessage
+  partialAnswer: string
+  history: Message.TextMessage[]
+  customSystemMessage?: string
+}
+
+const threads = {} as { [key: number]: ThreadState };
 
 type ConfigType = {
   debug?: boolean
@@ -65,14 +75,19 @@ let customSystemMessage = config.systemMessage;
 
 function addToHistory(msg: Message.TextMessage) {
   const key = msg.chat?.id || 0;
-  if (!history[key]) {
-    history[key] = [];
+  if (!threads[key]) {
+    threads[key] = {
+      history: [],
+      lastAnswer: undefined,
+      partialAnswer: '',
+      customSystemMessage: config.systemMessage,
+    };
   }
-  history[key].push(msg);
+  threads[key].history.push(msg);
 }
 
 function getHistory(msg: Context) {
-  return history[msg.chat?.id || 0] || [];
+  return threads[msg.chat?.id || 0].history || [];
 }
 
 function getChatgptAnswer(msg: Message.TextMessage) {
@@ -80,24 +95,30 @@ function getChatgptAnswer(msg: Message.TextMessage) {
 
   let systemMessage = `You answer as concisely as possible for each response. If you are generating a list, do not have too many items.
 Current date: ${new Date().toISOString()}\n\n`;
-    if (customSystemMessage) {
-    systemMessage = customSystemMessage;
+  if (threads[msg.chat?.id || 0]?.customSystemMessage) {
+    systemMessage = threads[msg.chat.id].customSystemMessage || '';
   }
 
   return api.sendMessage(msg.text, {
-    name: msg.from?.username, // TODO: user name from telegram
-    parentMessageId: lastAnswer?.id,
+    // name: `${msg.from?.username}`,
+    parentMessageId: threads[msg.chat.id].lastAnswer?.id,
+    timeoutMs: config.timeoutMs || 60000,
     onProgress: throttle((partialResponse) => {
-      partialAnswer += partialResponse.text;
+      // avoid send typing after answer
+      if (!typingSent || threads[msg.chat.id].partialAnswer != '') {
+        typingSent = true;
+        bot.telegram.sendChatAction(msg.chat.id, 'typing');
+      }
+
+      threads[msg.chat.id].partialAnswer += partialResponse.text;
       console.log(partialResponse.text);
-      bot.telegram.sendChatAction(msg.chat.id, 'typing');
-    }, 1000),
+    }, 4000),
     systemMessage,
   });
 }
 
 async function onMessage(ctx: Context) {
-  console.log("ctx:", ctx);
+  // console.log("ctx:", ctx);
   if (!('message' in ctx)) {
     console.log('no text in message');
     return;
@@ -111,7 +132,7 @@ async function onMessage(ctx: Context) {
 
   // console.log("ctx.message.text:", ctx.message?.text);
   const msg = ctx.message as Message.TextMessage;
-  // addToHistory(msg);
+  addToHistory(msg);
 
   if (chat.prefix) {
     const re = new RegExp(`^${chat.prefix}`, 'i');
@@ -124,7 +145,7 @@ async function onMessage(ctx: Context) {
     const re = new RegExp(`^${chat.progPrefix}`, 'i');
     const isProg = re.test(msg.text);
     if (isProg) {
-      customSystemMessage = msg.text.replace(chat.progPrefix, 'Ты');
+      threads[msg.chat.id].customSystemMessage = msg.text.replace(chat.progPrefix, 'Ты');
       return await ctx.telegram.sendMessage(msg.chat.id, 'OK');
     }
   }
@@ -134,25 +155,26 @@ async function onMessage(ctx: Context) {
     const re = new RegExp(`^${chat.forgetPrefix}`, 'i');
     const isForget = re.test(msg.text);
     if (isForget) {
-      lastAnswer = undefined;
+      forgetHistory(msg.chat.id);
       return await ctx.telegram.sendMessage(msg.chat.id, 'OK');
     }
   }
 
   try {
     const res = await getChatgptAnswer(msg);
-    partialAnswer = '';
+    threads[msg.chat.id].partialAnswer = '';
     console.log('res:', res);
-    lastAnswer = res;
+    threads[msg.chat.id].lastAnswer = res;
     // if (!ctx.message || !msg.chat) return;
     return await ctx.telegram.sendMessage(msg.chat.id, res?.text || 'бот не ответил');
   } catch (e) {
-    if (partialAnswer !== '') {
-      const answer = `бот ответил частично:\n\n${partialAnswer}`;
-      partialAnswer = '';
+    if (threads[msg.chat.id].partialAnswer !== '') {
+      const answer = `бот ответил частично и забыл диалог:\n\n${threads[msg.chat.id].partialAnswer}`;
+      forgetHistory(msg.chat.id);
+      threads[msg.chat.id].partialAnswer = '';
       return await ctx.telegram.sendMessage(msg.chat.id, answer);
     } else {
-      return await ctx.telegram.sendMessage(msg.chat.id, `бот ответил ошибкой`); // TODO: ${e.message}
+      return await ctx.telegram.sendMessage(msg.chat.id, `error:\n\n${(e as { message: string }).message}`); // TODO: ${e.message}
     }
   }
 }
