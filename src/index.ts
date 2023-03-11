@@ -142,11 +142,20 @@ async function onMessage(ctx: Context) {
 
   let chat = config.chats.find(c => c.id == ctx.chat?.id || 0) || {} as ConfigChatType;
   if (!chat.id) {
+    if (ctx.chat?.type !== 'private') {
+      return;
+    }
+
     if (ctx.chat?.type === 'private') {
       const isAllowed = config.allowedPrivateUsers?.includes(ctx.chat?.username || '')
       if (!isAllowed) {
         return await ctx.telegram.sendMessage(ctx.chat.id, 'You are not allowed to use this bot');
       }
+    }
+
+    const defaultChat = config.chats.find(c => c.name === 'default');
+    if (defaultChat) {
+      chat = defaultChat;
     }
   }
 

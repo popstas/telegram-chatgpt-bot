@@ -14,6 +14,11 @@ allowedPrivateUsers:
   - popstas
 
 chats:
+  - name: default
+    id: 0
+    progPrefix: бот, ты
+    forgetPrefix: забудь
+
   - name: Chat 1
     id:
 
