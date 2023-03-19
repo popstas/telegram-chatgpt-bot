@@ -134,6 +134,8 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     }
   }
 
+  const extraMessageParams = { reply_to_message_id: ctx.message?.message_id };
+
   // console.log("ctx.message.text:", ctx.message?.text);
   const msg = ctx.message as Message.TextMessage;
   addToHistory(msg, getSystemMessage(chat));
@@ -192,16 +194,23 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     threads[msg.chat.id].lastAnswer = res;
     // if (!ctx.message || !msg.chat) return;
     const text = telegramifyMarkdown(res?.text || 'бот не ответил');
-    return await ctx.telegram.sendMessage(msg.chat.id, text, { parse_mode: 'MarkdownV2' });
+    return await ctx.telegram.sendMessage(msg.chat.id, text, {...extraMessageParams, ...{ parse_mode: 'MarkdownV2' }});
   } catch (e) {
-    console.log("e:", JSON.stringify(e));
+    const error = e as { message: string };
+
+    if (!ctx.secondTry && error.message.includes('maximum context')) {
+      ctx.secondTry = true;
+      forgetHistory(msg.chat.id);
+      onMessage(ctx);
+    }
+
     if (threads[msg.chat.id].partialAnswer !== '') {
       const answer = `бот ответил частично и забыл диалог:\n\nerror:\n\n${error.message}\n\n${threads[msg.chat.id].partialAnswer}`;
       forgetHistory(msg.chat.id);
       threads[msg.chat.id].partialAnswer = '';
-      return await ctx.telegram.sendMessage(msg.chat.id, answer);
+      return await ctx.telegram.sendMessage(msg.chat.id, answer, extraMessageParams);
     } else {
-      return await ctx.telegram.sendMessage(msg.chat.id, `error:\n\n${(e as { message: string }).message}`); // TODO: ${e.message}
+      return await ctx.telegram.sendMessage(msg.chat.id, `error:\n\n${error.message}`, extraMessageParams);
     }
   }
 }
