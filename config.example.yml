@@ -16,7 +16,8 @@ allowedPrivateUsers:
 chats:
   - name: default
     id: 0
-    progPrefix: бот, ты
+    progPrefix: бот, ты теперь
+    progInfoPrefix: бот, начальные установки
     forgetPrefix: забудь
 
   - name: Chat 1
@@ -25,3 +26,5 @@ chats:
   - name: Chat 2
     id:
     prefix: бот
+    systemMessage: |
+      You are bot in chat 2

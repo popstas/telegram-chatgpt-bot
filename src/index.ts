@@ -26,7 +26,9 @@ type ConfigChatType = {
   id: number
   prefix?: string
   progPrefix?: string
+  progInfoPrefix?: string
   forgetPrefix?: string
+  systemMessage?: string
 }
 
 type ConfigType = {
@@ -84,14 +86,14 @@ function start() {
 
 start();
 
-function addToHistory(msg: Message.TextMessage) {
+function addToHistory(msg: Message.TextMessage, systemMessage?: string) {
   const key = msg.chat?.id || 0;
   if (!threads[key]) {
     threads[key] = {
       history: [],
       lastAnswer: undefined,
       partialAnswer: '',
-      customSystemMessage: config.systemMessage,
+      customSystemMessage: systemMessage || config.systemMessage,
     };
   }
   threads[key].history.push(msg);
@@ -123,7 +125,7 @@ Current date: ${new Date().toISOString()}\n\n`;
       }
 
       threads[msg.chat.id].partialAnswer += partialResponse.text;
-      console.log(partialResponse.text);
+      // console.log(partialResponse.text);
     }, 4000),
     systemMessage,
   });
@@ -164,7 +166,7 @@ async function onMessage(ctx: Context) {
 
   // console.log("ctx.message.text:", ctx.message?.text);
   const msg = ctx.message as Message.TextMessage;
-  addToHistory(msg);
+  addToHistory(msg, chat.systemMessage);
 
   if (chat.prefix) {
     const re = new RegExp(`^${chat.prefix}`, 'i');
@@ -180,15 +182,24 @@ async function onMessage(ctx: Context) {
     const re = new RegExp(`^${chat.progPrefix}`, 'i');
     const isProg = re.test(msg.text);
     if (isProg) {
-      const reg = new RegExp(chat.progPrefix, 'i');
-      const systemMessage = msg.text.replace(reg, '').trim();
+      const systemMessage = msg.text.replace(re, '').trim();
       threads[msg.chat.id].customSystemMessage = systemMessage;
+      forgetHistory(msg.chat.id);
       if (threads[msg.chat.id].customSystemMessage === '') {
         return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка сброшена');
       }
       else {
         return await ctx.telegram.sendMessage(msg.chat.id, 'Сменил начальную установку на: ' + threads[msg.chat.id].customSystemMessage);
       }
+    }
+  }
+
+  // prog info system message
+  if (chat.progInfoPrefix) {
+    const re = new RegExp(`^${chat.progInfoPrefix}`, 'i');
+    const isProg = re.test(msg.text);
+    if (isProg) {
+      return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка: ' + threads[msg.chat.id].customSystemMessage);
     }
   }
 
