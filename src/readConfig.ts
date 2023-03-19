@@ -1,25 +1,9 @@
 import * as yaml  from 'js-yaml';
 import { readFileSync } from 'fs';
+import { ConfigType } from './types.js';
 
-export type ConfigType = {
-  auth: {
-    bot_token: string
-    chatgpt_api_key: string
-  }
-  settings: {
-    temperature?: number
-    top_p?: number
-    debug: boolean
-  }
-  chats: {
-    name: string
-    id: number
-    prefix?: string
-  }[]
-}
-
-export function readConfig (path: string = 'config.yml') {
+export function readConfig (path: string = 'config.yml'): ConfigType {
   console.log("path:", path);
-  const config = yaml.load(readFileSync(path, 'utf8')) as ConfigType;
-  return config;
+  const config = yaml.load(readFileSync(path, 'utf8'));
+  return config as ConfigType;
 }

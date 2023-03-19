@@ -7,48 +7,10 @@ import { ChatGPTAPI, ChatMessage } from 'chatgpt';
 import debounce from "lodash.debounce";
 import throttle from "lodash.throttle";
 import { watchFile } from 'fs';
-// import { readConfig } from './readConfig'; // TODO: Cannot find module 'src/readConfig' imported from src/index.ts
+import { ConfigType, ConfigChatType, ThreadStateType } from './types.js';
+import { readConfig } from './readConfig.js'; // TODO: Cannot find module 'src/readConfig' imported from src/index.ts
 
-import * as yaml  from 'js-yaml';
-import { readFileSync } from 'fs';
-
-type ThreadState = {
-  lastAnswer?: ChatMessage
-  partialAnswer: string
-  history: Message.TextMessage[]
-  customSystemMessage?: string
-}
-
-const threads = {} as { [key: number]: ThreadState };
-
-type ConfigChatType = {
-  name: string
-  id: number
-  prefix?: string
-  progPrefix?: string
-  progInfoPrefix?: string
-  forgetPrefix?: string
-  systemMessage?: string
-}
-
-type ConfigType = {
-  debug?: boolean
-  auth: {
-    bot_token: string
-    chatgpt_api_key: string
-  },
-  systemMessage?: string
-  timeoutMs?: number
-  completionParams: {
-    temperature?: number
-    top_p?: number
-  }
-  allowedPrivateUsers?: string[]
-  chats: ConfigChatType[]
-}
-function readConfig (path: string = 'config.yml') {
-  return yaml.load(readFileSync(path, 'utf8')) as ConfigType;
-}
+const threads = {} as { [key: number]: ThreadStateType };
 
 const configPath = 'config.yml';
 let config: ConfigType;
@@ -106,8 +68,7 @@ function addToHistory(msg: Message.TextMessage, systemMessage?: string) {
 function getChatgptAnswer(msg: Message.TextMessage) {
   if (!msg.text) return;
 
-  let systemMessage = `You answer as concisely as possible for each response. If you are generating a list, do not have too many items.
-Current date: ${new Date().toISOString()}\n\n`;
+  let systemMessage = defaultSystemMessage();
   if (threads[msg.chat?.id || 0]?.customSystemMessage) {
     systemMessage = threads[msg.chat.id].customSystemMessage || '';
   }
@@ -135,7 +96,16 @@ function forgetHistory(chatId: number) {
   threads[chatId].lastAnswer = undefined;
 }
 
-async function onMessage(ctx: Context) {
+function defaultSystemMessage() {
+  return `You answer as concisely as possible for each response. If you are generating a list, do not have too many items.
+Current date: ${new Date().toISOString()}\n\n`;
+}
+
+function getSystemMessage(chatConfig: ConfigChatType) {
+  return threads[chatConfig.id]?.customSystemMessage || chatConfig.systemMessage || config.systemMessage || defaultSystemMessage()
+}
+
+async function onMessage(ctx: Context & { secondTry?: boolean }) {
   // console.log("ctx:", ctx);
   if (!('message' in ctx)) {
     console.log('no text in message');
@@ -166,7 +136,7 @@ async function onMessage(ctx: Context) {
 
   // console.log("ctx.message.text:", ctx.message?.text);
   const msg = ctx.message as Message.TextMessage;
-  addToHistory(msg, chat.systemMessage);
+  addToHistory(msg, getSystemMessage(chat));
 
   if (chat.prefix) {
     const re = new RegExp(`^${chat.prefix}`, 'i');
@@ -189,6 +159,7 @@ async function onMessage(ctx: Context) {
         return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка сброшена');
       }
       else {
+        threads[msg.chat.id].customSystemMessage = `Я ${threads[msg.chat.id].customSystemMessage}`;
         return await ctx.telegram.sendMessage(msg.chat.id, 'Сменил начальную установку на: ' + threads[msg.chat.id].customSystemMessage);
       }
     }
@@ -199,7 +170,7 @@ async function onMessage(ctx: Context) {
     const re = new RegExp(`^${chat.progInfoPrefix}`, 'i');
     const isProg = re.test(msg.text);
     if (isProg) {
-      return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка: ' + threads[msg.chat.id].customSystemMessage);
+      return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка: ' + getSystemMessage(chat));
     }
   }
 
@@ -225,7 +196,7 @@ async function onMessage(ctx: Context) {
   } catch (e) {
     console.log("e:", JSON.stringify(e));
     if (threads[msg.chat.id].partialAnswer !== '') {
-      const answer = `бот ответил частично и забыл диалог:\n\nerror:\n\n${(e as { message: string }).message}\n\n${threads[msg.chat.id].partialAnswer}`;
+      const answer = `бот ответил частично и забыл диалог:\n\nerror:\n\n${error.message}\n\n${threads[msg.chat.id].partialAnswer}`;
       forgetHistory(msg.chat.id);
       threads[msg.chat.id].partialAnswer = '';
       return await ctx.telegram.sendMessage(msg.chat.id, answer);
