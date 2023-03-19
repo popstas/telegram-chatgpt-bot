@@ -214,6 +214,7 @@ async function onMessage(ctx: Context) {
   }
 
   try {
+    threads[msg.chat.id].partialAnswer = '';
     const res = await getChatgptAnswer(msg);
     threads[msg.chat.id].partialAnswer = '';
     if (config.debug) console.log('res:', res);
@@ -222,8 +223,9 @@ async function onMessage(ctx: Context) {
     const text = telegramifyMarkdown(res?.text || 'бот не ответил');
     return await ctx.telegram.sendMessage(msg.chat.id, text, { parse_mode: 'MarkdownV2' });
   } catch (e) {
+    console.log("e:", JSON.stringify(e));
     if (threads[msg.chat.id].partialAnswer !== '') {
-      const answer = `бот ответил частично и забыл диалог:\n\n${threads[msg.chat.id].partialAnswer}`;
+      const answer = `бот ответил частично и забыл диалог:\n\nerror:\n\n${(e as { message: string }).message}\n\n${threads[msg.chat.id].partialAnswer}`;
       forgetHistory(msg.chat.id);
       threads[msg.chat.id].partialAnswer = '';
       return await ctx.telegram.sendMessage(msg.chat.id, answer);
