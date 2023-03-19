@@ -142,7 +142,9 @@ async function onMessage(ctx: Context) {
 
   let chat = config.chats.find(c => c.id == ctx.chat?.id || 0) || {} as ConfigChatType;
   if (!chat.id) {
+    console.log("ctx.chat:", ctx.chat);
     if (ctx.chat?.type !== 'private') {
+      console.log(`This is ${ctx.chat?.type} chat, not in whitelist`);
       return;
     }
 
@@ -154,6 +156,7 @@ async function onMessage(ctx: Context) {
     }
 
     const defaultChat = config.chats.find(c => c.name === 'default');
+    // console.log("defaultChat:", defaultChat);
     if (defaultChat) {
       chat = defaultChat;
     }
@@ -166,7 +169,10 @@ async function onMessage(ctx: Context) {
   if (chat.prefix) {
     const re = new RegExp(`^${chat.prefix}`, 'i');
     const isBot = re.test(msg.text);
-    if (!isBot) return;
+    if (!isBot) {
+      // console.log("not to bot:", ctx.chat);
+      return;
+    }
   }
 
   // prog system message
@@ -174,8 +180,15 @@ async function onMessage(ctx: Context) {
     const re = new RegExp(`^${chat.progPrefix}`, 'i');
     const isProg = re.test(msg.text);
     if (isProg) {
-      threads[msg.chat.id].customSystemMessage = msg.text.replace(chat.progPrefix, 'Ты');
-      return await ctx.telegram.sendMessage(msg.chat.id, 'OK');
+      const reg = new RegExp(chat.progPrefix, 'i');
+      const systemMessage = msg.text.replace(reg, '').trim();
+      threads[msg.chat.id].customSystemMessage = systemMessage;
+      if (threads[msg.chat.id].customSystemMessage === '') {
+        return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка сброшена');
+      }
+      else {
+        return await ctx.telegram.sendMessage(msg.chat.id, 'Сменил начальную установку на: ' + threads[msg.chat.id].customSystemMessage);
+      }
     }
   }
 
