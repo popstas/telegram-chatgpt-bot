@@ -110,13 +110,6 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
 
   let ctxChat: Chat | undefined;
   let msg: Message.TextMessage | undefined;
-  /*if (ctx.hasOwnProperty('message')) {
-    msg = ctx.message as Message.TextMessage;
-    ctxChat = ctx.chat;
-    // console.log('no message in ctx');
-    // return;
-  }
-  else*/
 
   if (ctx.hasOwnProperty('update')) {
     // console.log("ctx.update:", ctx.update);
@@ -139,12 +132,9 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     return;
   }
 
-  console.log("ctxChat:", ctxChat);
-  console.log("msg:", msg);
-
   let chat = config.chats.find(c => c.id == ctxChat?.id || 0) || {} as ConfigChatType;
   if (!chat.id) {
-    console.log("ctxChat:", ctxChat);
+    // console.log("ctxChat:", ctxChat);
     if (ctxChat?.type !== 'private') {
       console.log(`This is ${ctxChat?.type} chat, not in whitelist`);
       return;
@@ -183,8 +173,7 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     const re = new RegExp(`^${chat.progPrefix}`, 'i');
     const isProg = re.test(msg.text);
     if (isProg) {
-      const systemMessage = msg.text.replace(re, '').trim();
-      threads[msg.chat.id].customSystemMessage = systemMessage;
+      threads[msg.chat.id].customSystemMessage = msg.text.replace(re, '').trim();
       forgetHistory(msg.chat.id);
       if (threads[msg.chat.id].customSystemMessage === '') {
         return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка сброшена');
