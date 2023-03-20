@@ -1,14 +1,14 @@
 import { Telegraf, Context } from 'telegraf';
-// import { message } from 'telegraf/filters';
+import { message, editedMessage } from 'telegraf/filters';
 import telegramifyMarkdown from 'telegramify-markdown';
-import { Message } from 'telegraf/types';
-import { ChatGPTAPI, ChatMessage } from 'chatgpt';
+import { Message, Chat, Update } from 'telegraf/types';
+import { ChatGPTAPI } from 'chatgpt';
 // import { oraPromise } from 'ora';
 import debounce from "lodash.debounce";
 import throttle from "lodash.throttle";
 import { watchFile } from 'fs';
 import { ConfigType, ConfigChatType, ThreadStateType } from './types.js';
-import { readConfig } from './readConfig.js'; // TODO: Cannot find module 'src/readConfig' imported from src/index.ts
+import { readConfig } from './readConfig.js';
 
 const threads = {} as { [key: number]: ThreadStateType };
 
@@ -34,8 +34,8 @@ function start() {
 
     bot = new Telegraf(config.auth.bot_token);
     console.log('bot started');
-    bot.on('text', onMessage);
-    bot.on('channel_post', onMessage);
+    bot.on([message('text'), editedMessage('text')], onMessage);
+    // bot.on('channel_post', onMessage);
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
     bot.launch();
@@ -75,7 +75,7 @@ function getChatgptAnswer(msg: Message.TextMessage) {
 
   let typingSent = false;
   return api.sendMessage(msg.text, {
-    // name: `${msg.from?.username}`,
+    name: `${msg.from?.username}`,
     parentMessageId: threads[msg.chat.id].lastAnswer?.id,
     timeoutMs: config.timeoutMs || 60000,
     onProgress: throttle((partialResponse) => {
@@ -106,24 +106,54 @@ function getSystemMessage(chatConfig: ConfigChatType) {
 }
 
 async function onMessage(ctx: Context & { secondTry?: boolean }) {
-  // console.log("ctx:", ctx);
-  if (!('message' in ctx)) {
-    console.log('no text in message');
+  console.log("ctx:", ctx);
+
+  let ctxChat: Chat | undefined;
+  let msg: Message.TextMessage | undefined;
+  /*if (ctx.hasOwnProperty('message')) {
+    msg = ctx.message as Message.TextMessage;
+    ctxChat = ctx.chat;
+    // console.log('no message in ctx');
+    // return;
+  }
+  else*/
+
+  if (ctx.hasOwnProperty('update')) {
+    // console.log("ctx.update:", ctx.update);
+    const updateEdited = ctx.update as Update.EditedMessageUpdate; //{ edited_message: Message.TextMessage, chat: Chat };
+    const updateNew = ctx.update as Update.MessageUpdate;
+    msg = (updateEdited.edited_message || updateNew.message) as Message.TextMessage;
+    // console.log("msg:", msg);
+    ctxChat = msg?.chat;
+    // console.log('no message in ctx');
+    // return;
+  }
+
+  if (!msg) {
+    console.log("no ctx message detected");
     return;
   }
 
-  let chat = config.chats.find(c => c.id == ctx.chat?.id || 0) || {} as ConfigChatType;
+  if (!ctxChat) {
+    console.log("no ctx chat detected");
+    return;
+  }
+
+  console.log("ctxChat:", ctxChat);
+  console.log("msg:", msg);
+
+  let chat = config.chats.find(c => c.id == ctxChat?.id || 0) || {} as ConfigChatType;
   if (!chat.id) {
-    console.log("ctx.chat:", ctx.chat);
-    if (ctx.chat?.type !== 'private') {
-      console.log(`This is ${ctx.chat?.type} chat, not in whitelist`);
+    console.log("ctxChat:", ctxChat);
+    if (ctxChat?.type !== 'private') {
+      console.log(`This is ${ctxChat?.type} chat, not in whitelist`);
       return;
     }
 
-    if (ctx.chat?.type === 'private') {
-      const isAllowed = config.allowedPrivateUsers?.includes(ctx.chat?.username || '')
+    if (ctxChat?.type === 'private') {
+      const isAllowed = config.allowedPrivateUsers?.includes(ctxChat?.username || '')
       if (!isAllowed) {
-        return await ctx.telegram.sendMessage(ctx.chat.id, 'You are not allowed to use this bot');
+        return await ctx.telegram.sendMessage(ctxChat.id, 'You are not allowed to use this bot');
       }
     }
 
@@ -137,7 +167,6 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
   const extraMessageParams = { reply_to_message_id: ctx.message?.message_id };
 
   // console.log("ctx.message.text:", ctx.message?.text);
-  const msg = ctx.message as Message.TextMessage;
   addToHistory(msg, getSystemMessage(chat));
 
   if (chat.prefix) {
