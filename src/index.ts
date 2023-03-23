@@ -20,6 +20,12 @@ watchFile(configPath, debounce(() => {
   console.log("reload config...");
   config = readConfig(configPath);
   console.log("config:", config);
+
+  config.chats.filter(c => c.debug && threads[c.id]).forEach((c) => {
+    console.log("clear debug chat:", c.name);
+    forgetHistory(c.id);
+    threads[c.id].customSystemMessage = '';
+  });
 }, 2000));
 
 function start() {
@@ -65,13 +71,13 @@ function addToHistory(msg: Message.TextMessage, systemMessage?: string) {
   return threads[msg.chat?.id || 0].history || [];
 }*/
 
-function getChatgptAnswer(msg: Message.TextMessage) {
+function getChatgptAnswer(msg: Message.TextMessage, chatConfig: ConfigChatType) {
   if (!msg.text) return;
 
-  let systemMessage = defaultSystemMessage();
-  if (threads[msg.chat?.id || 0]?.customSystemMessage) {
-    systemMessage = threads[msg.chat.id].customSystemMessage || '';
-  }
+  let systemMessage = threads[msg.chat?.id || 0]?.customSystemMessage || getSystemMessage(chatConfig);
+
+  const date = new Date().toISOString();
+  systemMessage = systemMessage.replace(/\{date}/g, date);
 
   let typingSent = false;
   return api.sendMessage(msg.text, {
@@ -106,7 +112,7 @@ function getSystemMessage(chatConfig: ConfigChatType) {
 }
 
 async function onMessage(ctx: Context & { secondTry?: boolean }) {
-  console.log("ctx:", ctx);
+  // console.log("ctx:", ctx);
 
   let ctxChat: Chat | undefined;
   let msg: Message.TextMessage | undefined;
@@ -206,7 +212,7 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
 
   try {
     threads[msg.chat.id].partialAnswer = '';
-    const res = await getChatgptAnswer(msg);
+    const res = await getChatgptAnswer(msg, chat);
     threads[msg.chat.id].partialAnswer = '';
     if (config.debug) console.log('res:', res);
     threads[msg.chat.id].lastAnswer = res;

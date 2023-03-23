@@ -9,6 +9,7 @@ export type ConfigChatType = {
   progInfoPrefix?: string
   forgetPrefix?: string
   systemMessage?: string
+  debug?: boolean
 }
 
 export type ConfigType = {
