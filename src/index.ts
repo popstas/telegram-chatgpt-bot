@@ -12,7 +12,7 @@ import { readConfig } from './readConfig.js';
 
 const threads = {} as { [key: number]: ThreadStateType };
 
-const configPath = 'config.yml';
+const configPath = process.env.CONFIG || 'config.yml';
 let config: ConfigType;
 let bot: Telegraf<Context>;
 let api: ChatGPTAPI;
@@ -142,7 +142,7 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
   if (!chat.id) {
     // console.log("ctxChat:", ctxChat);
     if (ctxChat?.type !== 'private') {
-      console.log(`This is ${ctxChat?.type} chat, not in whitelist`);
+      console.log(`This is ${ctxChat?.type} chat, not in whitelist: ${ctxChat.id}`);
       return;
     }
 
