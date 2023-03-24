@@ -10,6 +10,7 @@ export type ConfigChatType = {
   forgetPrefix?: string
   systemMessage?: string
   debug?: boolean
+  memoryless?: boolean
 }
 
 export type ConfigType = {

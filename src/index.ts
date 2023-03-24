@@ -215,7 +215,8 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     const res = await getChatgptAnswer(msg, chat);
     threads[msg.chat.id].partialAnswer = '';
     if (config.debug) console.log('res:', res);
-    threads[msg.chat.id].lastAnswer = res;
+    if (!chat?.memoryless) threads[msg.chat.id].lastAnswer = res;
+
     // if (!ctx.message || !msg.chat) return;
     const text = telegramifyMarkdown(res?.text || 'бот не ответил');
     return await ctx.telegram.sendMessage(msg.chat.id, text, {...extraMessageParams, ...{ parse_mode: 'MarkdownV2' }});
