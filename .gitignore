@@ -6,6 +6,9 @@
 # production
 /build
 
+# dev scripts
+/scripts
+
 # misc
 .env.local
 .env.development.local
