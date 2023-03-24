@@ -174,6 +174,11 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     }
   }
 
+  // skip replies to other people
+  if (msg.reply_to_message && msg.from?.username !== msg.reply_to_message.from?.username) {
+    if (msg.reply_to_message.from?.username !== config.bot_name) return;
+  }
+
   // prog system message
   if (chat.progPrefix) {
     const re = new RegExp(`^${chat.progPrefix}`, 'i');

@@ -14,6 +14,7 @@ export type ConfigChatType = {
 }
 
 export type ConfigType = {
+  bot_name: string
   debug?: boolean
   auth: {
     bot_token: string
