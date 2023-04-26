@@ -4,8 +4,8 @@ import telegramifyMarkdown from 'telegramify-markdown';
 import { Message, Chat, Update } from 'telegraf/types';
 import { ChatGPTAPI } from 'chatgpt';
 // import { oraPromise } from 'ora';
-import debounce from "lodash.debounce";
-import throttle from "lodash.throttle";
+import debounce from 'lodash.debounce';
+import throttle from 'lodash.throttle';
 import { watchFile } from 'fs';
 import { ConfigType, ConfigChatType, ThreadStateType, CompletionParamsType } from './types.js';
 import { readConfig } from './readConfig.js';
@@ -19,20 +19,18 @@ let api: ChatGPTAPI;
 
 // watch config file
 watchFile(configPath, debounce(() => {
-  console.log("reload config...");
+  console.log('reload config...');
   config = readConfig(configPath);
-  console.log("config:", config);
+  console.log('config:', config);
 
   config.chats.filter(c => c.debug && threads[c.id]).forEach((c) => {
-    console.log("clear debug chat:", c.name);
+    console.log('clear debug chat:', c.name);
     forgetHistory(c.id);
     threads[c.id].customSystemMessage = '';
   });
 }, 2000));
 
 start();
-
-
 
 function start() {
   config = readConfig(configPath);
@@ -51,9 +49,8 @@ function start() {
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
     bot.launch();
-  }
-  catch(e) {
-    console.log("restart after 5 seconds...");
+  } catch (e) {
+    console.log('restart after 5 seconds...');
     setTimeout(start, 5000);
   }
 }
@@ -118,7 +115,7 @@ Current date: ${new Date().toISOString()}\n\n`;
 }
 
 function getSystemMessage(chatConfig: ConfigChatType) {
-  return threads[chatConfig.id]?.customSystemMessage || chatConfig.systemMessage || config.systemMessage || defaultSystemMessage()
+  return threads[chatConfig.id]?.customSystemMessage || chatConfig.systemMessage || config.systemMessage || defaultSystemMessage();
 }
 
 async function onMessage(ctx: Context & { secondTry?: boolean }) {
@@ -140,12 +137,12 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
   }
 
   if (!msg) {
-    console.log("no ctx message detected");
+    console.log('no ctx message detected');
     return;
   }
 
   if (!ctxChat) {
-    console.log("no ctx chat detected");
+    console.log('no ctx chat detected');
     return;
   }
 
@@ -158,7 +155,7 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     }
 
     if (ctxChat?.type === 'private') {
-      const isAllowed = config.allowedPrivateUsers?.includes(ctxChat?.username || '')
+      const isAllowed = config.allowedPrivateUsers?.includes(ctxChat?.username || '');
       if (!isAllowed) {
         console.log(`Not in whitelist: }`, msg.from);
         return await ctx.telegram.sendMessage(ctxChat.id, `You are not allowed to use this bot.
@@ -206,8 +203,7 @@ Your username: ${msg.from?.username}`);
       forgetHistory(msg.chat.id);
       if (threads[msg.chat.id].customSystemMessage === '') {
         return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка сброшена');
-      }
-      else {
+      } else {
         threads[msg.chat.id].customSystemMessage = `Я ${threads[msg.chat.id].customSystemMessage}`;
         return await ctx.telegram.sendMessage(msg.chat.id, 'Сменил начальную установку на: ' + threads[msg.chat.id].customSystemMessage);
       }
@@ -243,7 +239,7 @@ Your username: ${msg.from?.username}`);
 
     // if (!ctx.message || !msg.chat) return;
     const text = telegramifyMarkdown(res?.text || 'бот не ответил');
-    return await ctx.telegram.sendMessage(msg.chat.id, text, {...extraMessageParams, ...{ parse_mode: 'MarkdownV2' }});
+    return await ctx.telegram.sendMessage(msg.chat.id, text, { ...extraMessageParams, ...{ parse_mode: 'MarkdownV2' } });
   } catch (e) {
     const error = e as { message: string };
 
