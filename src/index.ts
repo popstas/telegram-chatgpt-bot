@@ -7,7 +7,7 @@ import { ChatGPTAPI } from 'chatgpt';
 import debounce from "lodash.debounce";
 import throttle from "lodash.throttle";
 import { watchFile } from 'fs';
-import { ConfigType, ConfigChatType, ThreadStateType } from './types.js';
+import { ConfigType, ConfigChatType, ThreadStateType, CompletionParamsType } from './types.js';
 import { readConfig } from './readConfig.js';
 
 const threads = {} as { [key: number]: ThreadStateType };
@@ -58,7 +58,11 @@ function start() {
   }
 }
 
-function addToHistory(msg: Message.TextMessage, systemMessage?: string) {
+function addToHistory({ msg, systemMessage, completionParams }: {
+  msg: Message.TextMessage;
+  systemMessage?: string;
+  completionParams?: CompletionParamsType;
+}) {
   const key = msg.chat?.id || 0;
   if (!threads[key]) {
     threads[key] = {
@@ -66,6 +70,7 @@ function addToHistory(msg: Message.TextMessage, systemMessage?: string) {
       lastAnswer: undefined,
       partialAnswer: '',
       customSystemMessage: systemMessage || config.systemMessage,
+      completionParams: completionParams || config.completionParams,
     };
   }
   threads[key].history.push(msg);
@@ -92,6 +97,7 @@ function getChatgptAnswer(msg: Message.TextMessage, chatConfig: ConfigChatType) 
     name: `${msg.from?.username}`,
     parentMessageId: threads[msg.chat.id].lastAnswer?.id,
     timeoutMs: config.timeoutMs || 60000,
+    completionParams: threads[msg.chat.id].completionParams || config.completionParams,
     onProgress: throttle((partialResponse) => {
       // avoid send typing after answer
       if (!typingSent || threads[msg.chat.id].partialAnswer != '') {
@@ -170,7 +176,11 @@ Your username: ${msg.from?.username}`);
   const extraMessageParams = { reply_to_message_id: ctx.message?.message_id };
 
   // console.log("ctx.message.text:", ctx.message?.text);
-  addToHistory(msg, getSystemMessage(chat));
+  addToHistory({
+    msg,
+    systemMessage: getSystemMessage(chat),
+    completionParams: chat.completionParams,
+  });
 
   // answer only to prefixed message
   if (chat.prefix) {
@@ -241,7 +251,7 @@ Your username: ${msg.from?.username}`);
     if (!ctx.secondTry && error.message.includes('maximum context')) {
       ctx.secondTry = true;
       forgetHistory(msg.chat.id);
-      onMessage(ctx);
+      await onMessage(ctx);
     }
 
     if (threads[msg.chat.id].partialAnswer !== '') {

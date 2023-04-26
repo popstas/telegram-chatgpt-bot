@@ -9,8 +9,15 @@ export type ConfigChatType = {
   progInfoPrefix?: string
   forgetPrefix?: string
   systemMessage?: string
+  completionParams?: CompletionParamsType
   debug?: boolean
   memoryless?: boolean
+}
+
+export type CompletionParamsType = {
+  temperature?: number
+  top_p?: number
+  presence_penalty?: number
 }
 
 export type ConfigType = {
@@ -22,10 +29,7 @@ export type ConfigType = {
   },
   systemMessage?: string
   timeoutMs?: number
-  completionParams: {
-    temperature?: number
-    top_p?: number
-  }
+  completionParams: CompletionParamsType
   allowedPrivateUsers?: string[]
   chats: ConfigChatType[]
 }
@@ -35,4 +39,5 @@ export type ThreadStateType = {
   partialAnswer: string
   history: Message.TextMessage[]
   customSystemMessage?: string
+  completionParams?: CompletionParamsType
 }
