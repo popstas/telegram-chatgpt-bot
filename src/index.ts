@@ -16,6 +16,8 @@ const configPath = process.env.CONFIG || 'config.yml';
 let config: ConfigType;
 let bot: Telegraf<Context>;
 let api: ChatGPTAPI;
+
+// watch config file
 watchFile(configPath, debounce(() => {
   console.log("reload config...");
   config = readConfig(configPath);
@@ -27,6 +29,10 @@ watchFile(configPath, debounce(() => {
     threads[c.id].customSystemMessage = '';
   });
 }, 2000));
+
+start();
+
+
 
 function start() {
   config = readConfig(configPath);
@@ -52,8 +58,6 @@ function start() {
   }
 }
 
-start();
-
 function addToHistory(msg: Message.TextMessage, systemMessage?: string) {
   const key = msg.chat?.id || 0;
   if (!threads[key]) {
@@ -65,6 +69,10 @@ function addToHistory(msg: Message.TextMessage, systemMessage?: string) {
     };
   }
   threads[key].history.push(msg);
+}
+
+function forgetHistory(chatId: number) {
+  threads[chatId].lastAnswer = undefined;
 }
 
 /*function getHistory(msg: Context) {
@@ -98,10 +106,6 @@ function getChatgptAnswer(msg: Message.TextMessage, chatConfig: ConfigChatType) 
   });
 }
 
-function forgetHistory(chatId: number) {
-  threads[chatId].lastAnswer = undefined;
-}
-
 function defaultSystemMessage() {
   return `You answer as concisely as possible for each response. If you are generating a list, do not have too many items.
 Current date: ${new Date().toISOString()}\n\n`;
@@ -117,6 +121,7 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
   let ctxChat: Chat | undefined;
   let msg: Message.TextMessage | undefined;
 
+  // edited message
   if (ctx.hasOwnProperty('update')) {
     // console.log("ctx.update:", ctx.update);
     const updateEdited = ctx.update as Update.EditedMessageUpdate; //{ edited_message: Message.TextMessage, chat: Chat };
@@ -149,7 +154,9 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     if (ctxChat?.type === 'private') {
       const isAllowed = config.allowedPrivateUsers?.includes(ctxChat?.username || '')
       if (!isAllowed) {
-        return await ctx.telegram.sendMessage(ctxChat.id, 'You are not allowed to use this bot');
+        console.log(`Not in whitelist: }`, msg.from);
+        return await ctx.telegram.sendMessage(ctxChat.id, `You are not allowed to use this bot.
+Your username: ${msg.from?.username}`);
       }
     }
 
@@ -165,6 +172,7 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
   // console.log("ctx.message.text:", ctx.message?.text);
   addToHistory(msg, getSystemMessage(chat));
 
+  // answer only to prefixed message
   if (chat.prefix) {
     const re = new RegExp(`^${chat.prefix}`, 'i');
     const isBot = re.test(msg.text);
@@ -215,6 +223,7 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     }
   }
 
+  // send request to chatgpt
   try {
     threads[msg.chat.id].partialAnswer = '';
     const res = await getChatgptAnswer(msg, chat);
@@ -228,6 +237,7 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
   } catch (e) {
     const error = e as { message: string };
 
+    // token limit exceeded
     if (!ctx.secondTry && error.message.includes('maximum context')) {
       ctx.secondTry = true;
       forgetHistory(msg.chat.id);
@@ -235,6 +245,7 @@ async function onMessage(ctx: Context & { secondTry?: boolean }) {
     }
 
     if (threads[msg.chat.id].partialAnswer !== '') {
+      // flush partial answer
       const answer = `бот ответил частично и забыл диалог:\n\nerror:\n\n${error.message}\n\n${threads[msg.chat.id].partialAnswer}`;
       forgetHistory(msg.chat.id);
       threads[msg.chat.id].partialAnswer = '';
