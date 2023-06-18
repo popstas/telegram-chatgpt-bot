@@ -3,7 +3,7 @@ import { message, editedMessage } from 'telegraf/filters';
 import { getEncoding } from 'js-tiktoken';
 import telegramifyMarkdown from 'telegramify-markdown';
 import { Message, Chat, Update } from 'telegraf/types';
-import { ChatGPTAPI } from 'chatgpt';
+import {ChatGPTAPI, ChatGPTError} from 'chatgpt';
 // import { oraPromise } from 'ora';
 import debounce from 'lodash.debounce';
 import throttle from 'lodash.throttle';
@@ -30,6 +30,16 @@ watchFile(configPath, debounce(() => {
     threads[c.id].customSystemMessage = '';
   });
 }, 2000));
+
+/*onunhandledrejection = (reason, p) => {
+  console.log('Unhandled Rejection at:', p, 'reason:', reason);
+}*/
+
+process.on('uncaughtException', (error, source) => {
+  console.log('Uncaught Exception:', error);
+  console.log("source:", source);
+});
+
 
 start();
 
@@ -241,7 +251,7 @@ Your username: ${msg.from?.username}`);
       const tokens = getTokensCount(systemMessage);
       let answer = 'Начальная установка: ' + systemMessage + '\n' + 'Токенов: ' + tokens + '\n';
       if (chat.completionParams?.model) {
-        answer = `Модель: ${chat.completionParams.model}\n` + answer;
+        answer = `Модель: ${chat.completionParams.model}\n\n` + answer;
       }
       const msgs = splitBigMessage(answer);
       for (const text of msgs) {
@@ -273,23 +283,28 @@ Your username: ${msg.from?.username}`);
     const text = telegramifyMarkdown(res?.text || 'бот не ответил');
     return await ctx.telegram.sendMessage(msg.chat.id, text, { ...extraMessageParams, ...{ parse_mode: 'MarkdownV2' } });
   } catch (e) {
-    const error = e as { message: string };
+    const error = e as ChatGPTError & { message: string };
+    console.log("error:", error);
+    // console.log("error.message:", error.message);
+    // console.log("typeof error.message:", typeof error.message);
+
+    if (ctx.secondTry) return;
 
     // token limit exceeded
-    if (!ctx.secondTry && error.message.includes('maximum context')) {
+    if (!ctx.secondTry && error.message.includes('context_length_exceeded')) {
       ctx.secondTry = true;
       forgetHistory(msg.chat.id);
-      await onMessage(ctx);
+      onMessage(ctx); // специально без await
     }
 
     if (threads[msg.chat.id].partialAnswer !== '') {
       // flush partial answer
-      const answer = `бот ответил частично и забыл диалог:\n\nerror:\n\n${error.message}\n\n${threads[msg.chat.id].partialAnswer}`;
+      const answer = `Бот ответил частично и забыл диалог:\n\n${error.message}\n\n${threads[msg.chat.id].partialAnswer}`;
       forgetHistory(msg.chat.id);
       threads[msg.chat.id].partialAnswer = '';
       return await ctx.telegram.sendMessage(msg.chat.id, answer, extraMessageParams);
     } else {
-      return await ctx.telegram.sendMessage(msg.chat.id, `error:\n\n${error.message}`, extraMessageParams);
+      return await ctx.telegram.sendMessage(msg.chat.id, `${error.message}${ctx.secondTry ? '\n\nПовторная отправка последнего сообщения...' : ''}`, extraMessageParams);
     }
   }
 }
