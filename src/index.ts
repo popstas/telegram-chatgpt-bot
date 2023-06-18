@@ -1,5 +1,6 @@
 import { Telegraf, Context } from 'telegraf';
 import { message, editedMessage } from 'telegraf/filters';
+import { getEncoding } from 'js-tiktoken';
 import telegramifyMarkdown from 'telegramify-markdown';
 import { Message, Chat, Update } from 'telegraf/types';
 import { ChatGPTAPI } from 'chatgpt';
@@ -118,6 +119,27 @@ function getSystemMessage(chatConfig: ConfigChatType) {
   return threads[chatConfig.id]?.customSystemMessage || chatConfig.systemMessage || config.systemMessage || defaultSystemMessage();
 }
 
+function splitBigMessage(text: string) {
+  const msgs: string[] = [];
+  const sizeLimit = 4096;
+  let msg = '';
+  for (const line of text.split('\n')) {
+      if (msg.length + line.length > sizeLimit) {
+        console.log("split msg:", msg);
+          msgs.push(msg);
+          msg = '';
+      }
+      msg += line + '\n';
+  }
+  msgs.push(msg);
+  return msgs;
+}
+
+function getTokensCount(text: string) {
+  const tokenizer = getEncoding('cl100k_base');
+  return tokenizer.encode(text).length;
+}
+
 async function onMessage(ctx: Context & { secondTry?: boolean }) {
   // console.log("ctx:", ctx);
 
@@ -215,7 +237,17 @@ Your username: ${msg.from?.username}`);
     const re = new RegExp(`^${chat.progInfoPrefix}`, 'i');
     const isProg = re.test(msg.text);
     if (isProg) {
-      return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка: ' + getSystemMessage(chat));
+      const systemMessage = getSystemMessage(chat);
+      const tokens = getTokensCount(systemMessage);
+      let answer = 'Начальная установка: ' + systemMessage + '\n' + 'Токенов: ' + tokens + '\n';
+      if (chat.completionParams?.model) {
+        answer = `Модель: ${chat.completionParams.model}\n` + answer;
+      }
+      const msgs = splitBigMessage(answer);
+      for (const text of msgs) {
+          await ctx.telegram.sendMessage(msg.chat.id, text);
+      }
+      return;
     }
   }
 
