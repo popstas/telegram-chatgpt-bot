@@ -14,6 +14,7 @@
   "dependencies": {
     "@mozilla/readability": "^0.4.4",
     "chatgpt": "^5.2.2",
+    "js-tiktoken": "^1.0.7",
     "js-yaml": "^4.1.0",
     "lodash.debounce": "^4.0.8",
     "lodash.throttle": "^4.1.1",

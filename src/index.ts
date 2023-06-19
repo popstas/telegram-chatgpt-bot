@@ -145,6 +145,24 @@ function splitBigMessage(text: string) {
   return msgs;
 }
 
+async function sendTelegramMessage(chat_id: number, text: string, extraMessageParams?: any) {
+  return new Promise((resolve, reject) => {
+
+    const msgs = splitBigMessage(text);
+    const params = {
+      ...extraMessageParams,
+      // disable_web_page_preview: true,
+      // disable_notification: true,
+      // parse_mode: 'HTML'
+    };
+
+    msgs.forEach(async (msg, i) => {
+      await bot.telegram.sendMessage(chat_id, msg, params);
+    });
+    resolve(true);
+  });
+}
+
 function getTokensCount(text: string) {
   const tokenizer = getEncoding('cl100k_base');
   return tokenizer.encode(text).length;
@@ -237,7 +255,7 @@ Your username: ${msg.from?.username}`);
         return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка сброшена');
       } else {
         threads[msg.chat.id].customSystemMessage = `Я ${threads[msg.chat.id].customSystemMessage}`;
-        return await ctx.telegram.sendMessage(msg.chat.id, 'Сменил начальную установку на: ' + threads[msg.chat.id].customSystemMessage);
+        return await sendTelegramMessage(msg.chat.id, 'Сменил начальную установку на: ' + threads[msg.chat.id].customSystemMessage);
       }
     }
   }
@@ -253,11 +271,7 @@ Your username: ${msg.from?.username}`);
       if (chat.completionParams?.model) {
         answer = `Модель: ${chat.completionParams.model}\n\n` + answer;
       }
-      const msgs = splitBigMessage(answer);
-      for (const text of msgs) {
-          await ctx.telegram.sendMessage(msg.chat.id, text);
-      }
-      return;
+      return sendTelegramMessage(msg.chat.id, answer);
     }
   }
 
@@ -281,7 +295,7 @@ Your username: ${msg.from?.username}`);
 
     // if (!ctx.message || !msg.chat) return;
     const text = telegramifyMarkdown(res?.text || 'бот не ответил');
-    return await ctx.telegram.sendMessage(msg.chat.id, text, { ...extraMessageParams, ...{ parse_mode: 'MarkdownV2' } });
+    return await sendTelegramMessage(msg.chat.id, text, { ...extraMessageParams, ...{ parse_mode: 'MarkdownV2' } });
   } catch (e) {
     const error = e as ChatGPTError & { message: string };
     console.log("error:", error);
@@ -302,9 +316,9 @@ Your username: ${msg.from?.username}`);
       const answer = `Бот ответил частично и забыл диалог:\n\n${error.message}\n\n${threads[msg.chat.id].partialAnswer}`;
       forgetHistory(msg.chat.id);
       threads[msg.chat.id].partialAnswer = '';
-      return await ctx.telegram.sendMessage(msg.chat.id, answer, extraMessageParams);
+      return await sendTelegramMessage(msg.chat.id, answer, extraMessageParams);
     } else {
-      return await ctx.telegram.sendMessage(msg.chat.id, `${error.message}${ctx.secondTry ? '\n\nПовторная отправка последнего сообщения...' : ''}`, extraMessageParams);
+      return await sendTelegramMessage(msg.chat.id, `${error.message}${ctx.secondTry ? '\n\nПовторная отправка последнего сообщения...' : ''}`, extraMessageParams);
     }
   }
 }
