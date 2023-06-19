@@ -19,6 +19,7 @@ export type CompletionParamsType = {
   temperature?: number
   top_p?: number
   presence_penalty?: number
+  max_tokens: number
 }
 
 export type ConfigType = {

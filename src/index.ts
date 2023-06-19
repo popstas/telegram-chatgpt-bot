@@ -51,6 +51,7 @@ function start() {
       apiKey: config.auth.chatgpt_api_key,
       completionParams: config.completionParams,
       debug: config.debug,
+      maxResponseTokens: config.completionParams.max_tokens || 0,
     });
 
     bot = new Telegraf(config.auth.bot_token);
@@ -149,6 +150,8 @@ async function sendTelegramMessage(chat_id: number, text: string, extraMessagePa
   return new Promise((resolve, reject) => {
 
     const msgs = splitBigMessage(text);
+    if (msgs.length > 1) console.log(`Split into ${msgs.length} messages`);
+
     const params = {
       ...extraMessageParams,
       // disable_web_page_preview: true,
