@@ -1,5 +1,5 @@
-import { ChatMessage } from 'chatgpt';
-import { Message } from 'telegraf/types';
+import { ChatMessage } from 'chatgpt'
+import { Message } from 'telegraf/types'
 
 export type ConfigChatType = {
   name: string

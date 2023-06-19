@@ -1,50 +1,49 @@
-import { Telegraf, Context } from 'telegraf';
-import { message, editedMessage } from 'telegraf/filters';
-import { getEncoding } from 'js-tiktoken';
-import telegramifyMarkdown from 'telegramify-markdown';
-import { Message, Chat, Update } from 'telegraf/types';
-import {ChatGPTAPI, ChatGPTError} from 'chatgpt';
+import { Telegraf, Context } from 'telegraf'
+import { message, editedMessage } from 'telegraf/filters'
+import { getEncoding } from 'js-tiktoken'
+import telegramifyMarkdown from 'telegramify-markdown'
+import { Message, Chat, Update } from 'telegraf/types'
+import { ChatGPTAPI, ChatGPTError } from 'chatgpt'
 // import { oraPromise } from 'ora';
-import debounce from 'lodash.debounce';
-import throttle from 'lodash.throttle';
-import { watchFile } from 'fs';
-import { ConfigType, ConfigChatType, ThreadStateType, CompletionParamsType } from './types.js';
-import { readConfig } from './readConfig.js';
+import debounce from 'lodash.debounce'
+import throttle from 'lodash.throttle'
+import { watchFile } from 'fs'
+import { ConfigType, ConfigChatType, ThreadStateType, CompletionParamsType } from './types.js'
+import { readConfig } from './readConfig.js'
 
-const threads = {} as { [key: number]: ThreadStateType };
+const threads = {} as { [key: number]: ThreadStateType }
 
-const configPath = process.env.CONFIG || 'config.yml';
-let config: ConfigType;
-let bot: Telegraf<Context>;
-let api: ChatGPTAPI;
+const configPath = process.env.CONFIG || 'config.yml'
+let config: ConfigType
+let bot: Telegraf<Context>
+let api: ChatGPTAPI
 
 // watch config file
 watchFile(configPath, debounce(() => {
-  console.log('reload config...');
-  config = readConfig(configPath);
-  console.log('config:', config);
+  console.log('reload config...')
+  config = readConfig(configPath)
+  console.log('config:', config)
 
   config.chats.filter(c => c.debug && threads[c.id]).forEach((c) => {
-    console.log('clear debug chat:', c.name);
-    forgetHistory(c.id);
-    threads[c.id].customSystemMessage = '';
-  });
-}, 2000));
+    console.log('clear debug chat:', c.name)
+    forgetHistory(c.id)
+    threads[c.id].customSystemMessage = ''
+  })
+}, 2000))
 
 /*onunhandledrejection = (reason, p) => {
   console.log('Unhandled Rejection at:', p, 'reason:', reason);
 }*/
 
 process.on('uncaughtException', (error, source) => {
-  console.log('Uncaught Exception:', error);
-  console.log("source:", source);
-});
+  console.log('Uncaught Exception:', error)
+  console.log('source:', source)
+})
 
+start()
 
-start();
-
-function start() {
-  config = readConfig(configPath);
+function start () {
+  config = readConfig(configPath)
 
   try {
     api = new ChatGPTAPI({
@@ -52,27 +51,27 @@ function start() {
       completionParams: config.completionParams,
       debug: config.debug,
       maxResponseTokens: config.completionParams.max_tokens || 0,
-    });
+    })
 
-    bot = new Telegraf(config.auth.bot_token);
-    console.log('bot started');
-    bot.on([message('text'), editedMessage('text')], onMessage);
+    bot = new Telegraf(config.auth.bot_token)
+    console.log('bot started')
+    bot.on([message('text'), editedMessage('text')], onMessage)
     // bot.on('channel_post', onMessage);
-    process.once('SIGINT', () => bot.stop('SIGINT'));
-    process.once('SIGTERM', () => bot.stop('SIGTERM'));
-    bot.launch();
+    process.once('SIGINT', () => bot.stop('SIGINT'))
+    process.once('SIGTERM', () => bot.stop('SIGTERM'))
+    bot.launch()
   } catch (e) {
-    console.log('restart after 5 seconds...');
-    setTimeout(start, 5000);
+    console.log('restart after 5 seconds...')
+    setTimeout(start, 5000)
   }
 }
 
-function addToHistory({ msg, systemMessage, completionParams }: {
+function addToHistory ({ msg, systemMessage, completionParams }: {
   msg: Message.TextMessage;
   systemMessage?: string;
   completionParams?: CompletionParamsType;
 }) {
-  const key = msg.chat?.id || 0;
+  const key = msg.chat?.id || 0
   if (!threads[key]) {
     threads[key] = {
       history: [],
@@ -80,28 +79,28 @@ function addToHistory({ msg, systemMessage, completionParams }: {
       partialAnswer: '',
       customSystemMessage: systemMessage || config.systemMessage,
       completionParams: completionParams || config.completionParams,
-    };
+    }
   }
-  threads[key].history.push(msg);
+  threads[key].history.push(msg)
 }
 
-function forgetHistory(chatId: number) {
-  threads[chatId].lastAnswer = undefined;
+function forgetHistory (chatId: number) {
+  threads[chatId].lastAnswer = undefined
 }
 
 /*function getHistory(msg: Context) {
   return threads[msg.chat?.id || 0].history || [];
 }*/
 
-function getChatgptAnswer(msg: Message.TextMessage, chatConfig: ConfigChatType) {
-  if (!msg.text) return;
+function getChatgptAnswer (msg: Message.TextMessage, chatConfig: ConfigChatType) {
+  if (!msg.text) return
 
-  let systemMessage = threads[msg.chat?.id || 0]?.customSystemMessage || getSystemMessage(chatConfig);
+  let systemMessage = threads[msg.chat?.id || 0]?.customSystemMessage || getSystemMessage(chatConfig)
 
-  const date = new Date().toISOString();
-  systemMessage = systemMessage.replace(/\{date}/g, date);
+  const date = new Date().toISOString()
+  systemMessage = systemMessage.replace(/\{date}/g, date)
 
-  let typingSent = false;
+  let typingSent = false
   return api.sendMessage(msg.text, {
     name: `${msg.from?.username}`,
     parentMessageId: threads[msg.chat.id].lastAnswer?.id,
@@ -110,218 +109,218 @@ function getChatgptAnswer(msg: Message.TextMessage, chatConfig: ConfigChatType) 
     onProgress: throttle((partialResponse) => {
       // avoid send typing after answer
       if (!typingSent || threads[msg.chat.id].partialAnswer != '') {
-        typingSent = true;
-        bot.telegram.sendChatAction(msg.chat.id, 'typing');
+        typingSent = true
+        bot.telegram.sendChatAction(msg.chat.id, 'typing')
       }
 
-      threads[msg.chat.id].partialAnswer += partialResponse.text;
+      threads[msg.chat.id].partialAnswer += partialResponse.text
       // console.log(partialResponse.text);
     }, 4000),
     systemMessage,
-  });
+  })
 }
 
-function defaultSystemMessage() {
+function defaultSystemMessage () {
   return `You answer as concisely as possible for each response. If you are generating a list, do not have too many items.
-Current date: ${new Date().toISOString()}\n\n`;
+Current date: ${new Date().toISOString()}\n\n`
 }
 
-function getSystemMessage(chatConfig: ConfigChatType) {
-  return threads[chatConfig.id]?.customSystemMessage || chatConfig.systemMessage || config.systemMessage || defaultSystemMessage();
+function getSystemMessage (chatConfig: ConfigChatType) {
+  return threads[chatConfig.id]?.customSystemMessage || chatConfig.systemMessage || config.systemMessage || defaultSystemMessage()
 }
 
-function splitBigMessage(text: string) {
-  const msgs: string[] = [];
-  const sizeLimit = 4096;
-  let msg = '';
+function splitBigMessage (text: string) {
+  const msgs: string[] = []
+  const sizeLimit = 4096
+  let msg = ''
   for (const line of text.split('\n')) {
-      if (msg.length + line.length > sizeLimit) {
-        console.log("split msg:", msg);
-          msgs.push(msg);
-          msg = '';
-      }
-      msg += line + '\n';
+    if (msg.length + line.length > sizeLimit) {
+      // console.log("split msg:", msg);
+      msgs.push(msg)
+      msg = ''
+    }
+    msg += line + '\n'
   }
-  msgs.push(msg);
-  return msgs;
+  msgs.push(msg)
+  return msgs
 }
 
-async function sendTelegramMessage(chat_id: number, text: string, extraMessageParams?: any) {
-  return new Promise((resolve, reject) => {
+async function sendTelegramMessage (chat_id: number, text: string, extraMessageParams?: any) {
+  return new Promise((resolve) => {
 
-    const msgs = splitBigMessage(text);
-    if (msgs.length > 1) console.log(`Split into ${msgs.length} messages`);
+    const msgs = splitBigMessage(text)
+    if (msgs.length > 1) console.log(`Split into ${msgs.length} messages`)
 
     const params = {
       ...extraMessageParams,
       // disable_web_page_preview: true,
       // disable_notification: true,
       // parse_mode: 'HTML'
-    };
+    }
 
-    msgs.forEach(async (msg, i) => {
-      await bot.telegram.sendMessage(chat_id, msg, params);
-    });
-    resolve(true);
-  });
+    msgs.forEach(async (msg) => {
+      await bot.telegram.sendMessage(chat_id, msg, params)
+    })
+    resolve(true)
+  })
 }
 
-function getTokensCount(text: string) {
-  const tokenizer = getEncoding('cl100k_base');
-  return tokenizer.encode(text).length;
+function getTokensCount (text: string) {
+  const tokenizer = getEncoding('cl100k_base')
+  return tokenizer.encode(text).length
 }
 
-async function onMessage(ctx: Context & { secondTry?: boolean }) {
+async function onMessage (ctx: Context & { secondTry?: boolean }) {
   // console.log("ctx:", ctx);
 
-  let ctxChat: Chat | undefined;
-  let msg: Message.TextMessage | undefined;
+  let ctxChat: Chat | undefined
+  let msg: Message.TextMessage | undefined
 
   // edited message
   if (ctx.hasOwnProperty('update')) {
     // console.log("ctx.update:", ctx.update);
-    const updateEdited = ctx.update as Update.EditedMessageUpdate; //{ edited_message: Message.TextMessage, chat: Chat };
-    const updateNew = ctx.update as Update.MessageUpdate;
-    msg = (updateEdited.edited_message || updateNew.message) as Message.TextMessage;
+    const updateEdited = ctx.update as Update.EditedMessageUpdate //{ edited_message: Message.TextMessage, chat: Chat };
+    const updateNew = ctx.update as Update.MessageUpdate
+    msg = (updateEdited.edited_message || updateNew.message) as Message.TextMessage
     // console.log("msg:", msg);
-    ctxChat = msg?.chat;
+    ctxChat = msg?.chat
     // console.log('no message in ctx');
     // return;
   }
 
   if (!msg) {
-    console.log('no ctx message detected');
-    return;
+    console.log('no ctx message detected')
+    return
   }
 
   if (!ctxChat) {
-    console.log('no ctx chat detected');
-    return;
+    console.log('no ctx chat detected')
+    return
   }
 
-  let chat = config.chats.find(c => c.id == ctxChat?.id || 0) || {} as ConfigChatType;
+  let chat = config.chats.find(c => c.id == ctxChat?.id || 0) || {} as ConfigChatType
   if (!chat.id) {
     // console.log("ctxChat:", ctxChat);
     if (ctxChat?.type !== 'private') {
-      console.log(`This is ${ctxChat?.type} chat, not in whitelist: ${ctxChat.id}`);
-      return;
+      console.log(`This is ${ctxChat?.type} chat, not in whitelist: ${ctxChat.id}`)
+      return
     }
 
     if (ctxChat?.type === 'private') {
-      const isAllowed = config.allowedPrivateUsers?.includes(ctxChat?.username || '');
+      const isAllowed = config.allowedPrivateUsers?.includes(ctxChat?.username || '')
       if (!isAllowed) {
-        console.log(`Not in whitelist: }`, msg.from);
+        console.log(`Not in whitelist: }`, msg.from)
         return await ctx.telegram.sendMessage(ctxChat.id, `You are not allowed to use this bot.
-Your username: ${msg.from?.username}`);
+Your username: ${msg.from?.username}`)
       }
     }
 
-    const defaultChat = config.chats.find(c => c.name === 'default');
+    const defaultChat = config.chats.find(c => c.name === 'default')
     // console.log("defaultChat:", defaultChat);
     if (defaultChat) {
-      chat = defaultChat;
+      chat = defaultChat
     }
   }
 
-  const extraMessageParams = { reply_to_message_id: ctx.message?.message_id };
+  const extraMessageParams = { reply_to_message_id: ctx.message?.message_id }
 
   // console.log("ctx.message.text:", ctx.message?.text);
   addToHistory({
     msg,
     systemMessage: getSystemMessage(chat),
     completionParams: chat.completionParams,
-  });
+  })
 
   // answer only to prefixed message
   if (chat.prefix) {
-    const re = new RegExp(`^${chat.prefix}`, 'i');
-    const isBot = re.test(msg.text);
+    const re = new RegExp(`^${chat.prefix}`, 'i')
+    const isBot = re.test(msg.text)
     if (!isBot) {
       // console.log("not to bot:", ctx.chat);
-      return;
+      return
     }
   }
 
   // skip replies to other people
   if (msg.reply_to_message && msg.from?.username !== msg.reply_to_message.from?.username) {
-    if (msg.reply_to_message.from?.username !== config.bot_name) return;
+    if (msg.reply_to_message.from?.username !== config.bot_name) return
   }
 
   // prog system message
   if (chat.progPrefix) {
-    const re = new RegExp(`^${chat.progPrefix}`, 'i');
-    const isProg = re.test(msg.text);
+    const re = new RegExp(`^${chat.progPrefix}`, 'i')
+    const isProg = re.test(msg.text)
     if (isProg) {
-      threads[msg.chat.id].customSystemMessage = msg.text.replace(re, '').trim();
-      forgetHistory(msg.chat.id);
+      threads[msg.chat.id].customSystemMessage = msg.text.replace(re, '').trim()
+      forgetHistory(msg.chat.id)
       if (threads[msg.chat.id].customSystemMessage === '') {
-        return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка сброшена');
+        return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка сброшена')
       } else {
-        threads[msg.chat.id].customSystemMessage = `Я ${threads[msg.chat.id].customSystemMessage}`;
-        return await sendTelegramMessage(msg.chat.id, 'Сменил начальную установку на: ' + threads[msg.chat.id].customSystemMessage);
+        threads[msg.chat.id].customSystemMessage = `Я ${threads[msg.chat.id].customSystemMessage}`
+        return await sendTelegramMessage(msg.chat.id, 'Сменил начальную установку на: ' + threads[msg.chat.id].customSystemMessage)
       }
     }
   }
 
   // prog info system message
   if (chat.progInfoPrefix) {
-    const re = new RegExp(`^${chat.progInfoPrefix}`, 'i');
-    const isProg = re.test(msg.text);
+    const re = new RegExp(`^${chat.progInfoPrefix}`, 'i')
+    const isProg = re.test(msg.text)
     if (isProg) {
-      const systemMessage = getSystemMessage(chat);
-      const tokens = getTokensCount(systemMessage);
-      let answer = 'Начальная установка: ' + systemMessage + '\n' + 'Токенов: ' + tokens + '\n';
+      const systemMessage = getSystemMessage(chat)
+      const tokens = getTokensCount(systemMessage)
+      let answer = 'Начальная установка: ' + systemMessage + '\n' + 'Токенов: ' + tokens + '\n'
       if (chat.completionParams?.model) {
-        answer = `Модель: ${chat.completionParams.model}\n\n` + answer;
+        answer = `Модель: ${chat.completionParams.model}\n\n` + answer
       }
-      return sendTelegramMessage(msg.chat.id, answer);
+      return sendTelegramMessage(msg.chat.id, answer)
     }
   }
 
   // forget thread
   if (chat.forgetPrefix) {
-    const re = new RegExp(`^${chat.forgetPrefix}`, 'i');
-    const isForget = re.test(msg.text);
+    const re = new RegExp(`^${chat.forgetPrefix}`, 'i')
+    const isForget = re.test(msg.text)
     if (isForget) {
-      forgetHistory(msg.chat.id);
-      return await ctx.telegram.sendMessage(msg.chat.id, 'OK');
+      forgetHistory(msg.chat.id)
+      return await ctx.telegram.sendMessage(msg.chat.id, 'OK')
     }
   }
 
   // send request to chatgpt
   try {
-    threads[msg.chat.id].partialAnswer = '';
-    const res = await getChatgptAnswer(msg, chat);
-    threads[msg.chat.id].partialAnswer = '';
-    if (config.debug) console.log('res:', res);
-    if (!chat?.memoryless) threads[msg.chat.id].lastAnswer = res;
+    threads[msg.chat.id].partialAnswer = ''
+    const res = await getChatgptAnswer(msg, chat)
+    threads[msg.chat.id].partialAnswer = ''
+    if (config.debug) console.log('res:', res)
+    if (!chat?.memoryless) threads[msg.chat.id].lastAnswer = res
 
     // if (!ctx.message || !msg.chat) return;
-    const text = telegramifyMarkdown(res?.text || 'бот не ответил');
-    return await sendTelegramMessage(msg.chat.id, text, { ...extraMessageParams, ...{ parse_mode: 'MarkdownV2' } });
+    const text = telegramifyMarkdown(res?.text || 'бот не ответил')
+    return await sendTelegramMessage(msg.chat.id, text, { ...extraMessageParams, ...{ parse_mode: 'MarkdownV2' } })
   } catch (e) {
-    const error = e as ChatGPTError & { message: string };
-    console.log("error:", error);
+    const error = e as ChatGPTError & { message: string }
+    console.log('error:', error)
     // console.log("error.message:", error.message);
     // console.log("typeof error.message:", typeof error.message);
 
-    if (ctx.secondTry) return;
+    if (ctx.secondTry) return
 
     // token limit exceeded
     if (!ctx.secondTry && error.message.includes('context_length_exceeded')) {
-      ctx.secondTry = true;
-      forgetHistory(msg.chat.id);
-      onMessage(ctx); // специально без await
+      ctx.secondTry = true
+      forgetHistory(msg.chat.id)
+      onMessage(ctx) // специально без await
     }
 
     if (threads[msg.chat.id].partialAnswer !== '') {
       // flush partial answer
-      const answer = `Бот ответил частично и забыл диалог:\n\n${error.message}\n\n${threads[msg.chat.id].partialAnswer}`;
-      forgetHistory(msg.chat.id);
-      threads[msg.chat.id].partialAnswer = '';
-      return await sendTelegramMessage(msg.chat.id, answer, extraMessageParams);
+      const answer = `Бот ответил частично и забыл диалог:\n\n${error.message}\n\n${threads[msg.chat.id].partialAnswer}`
+      forgetHistory(msg.chat.id)
+      threads[msg.chat.id].partialAnswer = ''
+      return await sendTelegramMessage(msg.chat.id, answer, extraMessageParams)
     } else {
-      return await sendTelegramMessage(msg.chat.id, `${error.message}${ctx.secondTry ? '\n\nПовторная отправка последнего сообщения...' : ''}`, extraMessageParams);
+      return await sendTelegramMessage(msg.chat.id, `${error.message}${ctx.secondTry ? '\n\nПовторная отправка последнего сообщения...' : ''}`, extraMessageParams)
     }
   }
 }
