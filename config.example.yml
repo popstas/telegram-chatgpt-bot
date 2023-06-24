@@ -6,6 +6,10 @@ auth:
   bot_token:
   chatgpt_api_key:
 
+googleAuth:
+  client_email: user@gserviceaccount.com
+  private_key: "-----BEGIN PRIVATE KEY-----\n-----END PRIVATE KEY-----\n"
+
 # hot reload
 completionParams: # from https://platform.openai.com/docs/api-reference/chat
   temperature: 1 # default 1
@@ -43,7 +47,7 @@ chats:
     buttonsSync:
       sheetId: google-doc-id
       sheetName: gpt prompts telegram
-      auth:
+      auth: # optional
         client_email: user@gserviceaccount.com
         private_key: "-----BEGIN PRIVATE KEY-----\n-----END PRIVATE KEY-----\n"
 

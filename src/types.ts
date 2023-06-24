@@ -5,7 +5,7 @@ import { ServiceAccountCredentials } from 'google-spreadsheet'
 export type ButtonsSyncConfigType = {
   sheetId: string
   sheetName: string
-  auth: ServiceAccountCredentials
+  auth?: ServiceAccountCredentials
 }
 
 export type ConfigChatType = {
@@ -56,6 +56,7 @@ export type ConfigType = {
     bot_token: string
     chatgpt_api_key: string
   },
+  googleAuth: ServiceAccountCredentials
   systemMessage?: string
   timeoutMs?: number
   completionParams: CompletionParamsType

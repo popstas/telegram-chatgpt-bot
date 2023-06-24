@@ -418,8 +418,8 @@ async function syncButtons (chat: ConfigChatType) {
   return buttons;
 }
 
-async function getGoogleButtons (config: ButtonsSyncConfigType) {
-  const sheet = await loadSheet(config)
+async function getGoogleButtons (syncConfig: ButtonsSyncConfigType) {
+  const sheet = await loadSheet(syncConfig)
   const rows = await sheet.getRows()
   const buttons: ConfigChatButtonType[] = []
   for (let row of rows) {
@@ -435,13 +435,13 @@ async function getGoogleButtons (config: ButtonsSyncConfigType) {
   return buttons
 }
 
-async function loadSheet (config: ButtonsSyncConfigType) {
+async function loadSheet (syncConfig: ButtonsSyncConfigType) {
   // load doc, sheet, rows
-  const doc = new GoogleSpreadsheet(config.sheetId)
-  await doc.useServiceAccountAuth(config.auth)
+  const doc = new GoogleSpreadsheet(syncConfig.sheetId)
+  await doc.useServiceAccountAuth(syncConfig.auth || config.googleAuth)
   await doc.loadInfo()
 
-  const sheet = doc.sheetsByTitle[config.sheetName] // or use doc.sheetsById[id] or doc.sheetsByTitle[title]
+  const sheet = doc.sheetsByTitle[syncConfig.sheetName] // or use doc.sheetsById[id] or doc.sheetsByTitle[title]
   // const rows = await sheet.getRows();
   await sheet.loadCells({
     startRowIndex: 0,
