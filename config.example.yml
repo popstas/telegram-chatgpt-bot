@@ -30,8 +30,10 @@ chats:
       max_tokens: 4000
     buttons:
       - name: summarize
+        row: 2 # row in telegram buttons keyboard
         prompt: |
           Summarize text. Text:
+        waitMessage: Please, enter the text
 
   - name: Chat 2
     id:

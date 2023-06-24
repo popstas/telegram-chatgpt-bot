@@ -60,9 +60,13 @@ export type ThreadStateType = {
   history: Message.TextMessage[]
   customSystemMessage?: string
   completionParams?: CompletionParamsType
+  activeButton?: ConfigChatButtonType
+  nextSystemMessage?: string
 }
 
 export type ConfigChatButtonType = {
   name: string
   prompt: string
+  row?: number
+  waitMessage?: string
 }

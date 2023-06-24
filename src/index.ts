@@ -95,7 +95,12 @@ function forgetHistory (chatId: number) {
 function getChatgptAnswer (msg: Message.TextMessage, chatConfig: ConfigChatType) {
   if (!msg.text) return
 
-  let systemMessage = threads[msg.chat?.id || 0]?.customSystemMessage || getSystemMessage(chatConfig)
+  const thread = threads[msg.chat?.id || 0]
+  let systemMessage = thread?.customSystemMessage || getSystemMessage(chatConfig)
+  if (thread?.nextSystemMessage) {
+    systemMessage = thread.nextSystemMessage || ''
+    thread.nextSystemMessage = ''
+  }
 
   const date = new Date().toISOString()
   systemMessage = systemMessage.replace(/\{date}/g, date)
@@ -103,17 +108,17 @@ function getChatgptAnswer (msg: Message.TextMessage, chatConfig: ConfigChatType)
   let typingSent = false
   return api.sendMessage(msg.text, {
     name: `${msg.from?.username}`,
-    parentMessageId: threads[msg.chat.id].lastAnswer?.id,
+    parentMessageId: thread.lastAnswer?.id,
     timeoutMs: config.timeoutMs || 60000,
-    completionParams: threads[msg.chat.id].completionParams || config.completionParams,
+    completionParams: thread.completionParams || config.completionParams,
     onProgress: throttle((partialResponse) => {
       // avoid send typing after answer
-      if (!typingSent || threads[msg.chat.id].partialAnswer != '') {
+      if (!typingSent || thread.partialAnswer != '') {
         typingSent = true
         bot.telegram.sendChatAction(msg.chat.id, 'typing')
       }
 
-      threads[msg.chat.id].partialAnswer += partialResponse.text
+      thread.partialAnswer += partialResponse.text
       // console.log(partialResponse.text);
     }, 4000),
     systemMessage,
@@ -238,18 +243,35 @@ Your username: ${msg.from?.username}`)
     completionParams: chat.completionParams,
   })
 
+  const thread = threads[msg.chat.id]
+
   // replace msg.text to button.prompt if match button.name
-  let matchedButton: ConfigChatButtonType | undefined = undefined;
+  let matchedButton: ConfigChatButtonType | undefined = undefined
+  const activeButton = thread.activeButton
   if (chat.buttons) {
-    matchedButton = chat.buttons.find(b => b.name === msg?.text || "");
+
+    // message == button.name
+    matchedButton = chat.buttons.find(b => b.name === msg?.text || '')
     if (matchedButton) {
-      const prompt = matchedButton.prompt || "";
-      msg.text = prompt;
+      msg.text = matchedButton.prompt || ''
+
+      // send ask for text message
+      if (matchedButton.waitMessage) {
+        thread.activeButton = matchedButton
+        return await sendTelegramMessage(msg.chat.id, matchedButton.waitMessage, extraMessageParams)
+      }
+    }
+
+    // received text, send prompt with text in the end
+    if (activeButton) {
+      forgetHistory(msg.chat.id)
+      thread.nextSystemMessage = activeButton.prompt
+      thread.activeButton = undefined
     }
   }
 
   // answer only to prefixed message
-  if (chat.prefix && !matchedButton) {
+  if (chat.prefix && !matchedButton && !activeButton) {
     const re = new RegExp(`^${chat.prefix}`, 'i')
     const isBot = re.test(msg.text)
     if (!isBot) {
@@ -268,13 +290,13 @@ Your username: ${msg.from?.username}`)
     const re = new RegExp(`^${chat.progPrefix}`, 'i')
     const isProg = re.test(msg.text)
     if (isProg) {
-      threads[msg.chat.id].customSystemMessage = msg.text.replace(re, '').trim()
+      thread.customSystemMessage = msg.text.replace(re, '').trim()
       forgetHistory(msg.chat.id)
-      if (threads[msg.chat.id].customSystemMessage === '') {
+      if (thread.customSystemMessage === '') {
         return await ctx.telegram.sendMessage(msg.chat.id, 'Начальная установка сброшена')
       } else {
-        threads[msg.chat.id].customSystemMessage = `Я ${threads[msg.chat.id].customSystemMessage}`
-        return await sendTelegramMessage(msg.chat.id, 'Сменил начальную установку на: ' + threads[msg.chat.id].customSystemMessage)
+        thread.customSystemMessage = `Я ${thread.customSystemMessage}`
+        return await sendTelegramMessage(msg.chat.id, 'Сменил начальную установку на: ' + thread.customSystemMessage)
       }
     }
   }
@@ -306,11 +328,11 @@ Your username: ${msg.from?.username}`)
 
   // send request to chatgpt
   try {
-    threads[msg.chat.id].partialAnswer = ''
+    thread.partialAnswer = ''
     const res = await getChatgptAnswer(msg, chat)
-    threads[msg.chat.id].partialAnswer = ''
+    thread.partialAnswer = ''
     if (config.debug) console.log('res:', res)
-    if (!chat?.memoryless) threads[msg.chat.id].lastAnswer = res
+    if (!chat?.memoryless) thread.lastAnswer = res
     // console.log("res:", res);
 
     // if (!ctx.message || !msg.chat) return;
@@ -320,8 +342,14 @@ Your username: ${msg.from?.username}`)
       ...{ parse_mode: 'MarkdownV2' }
     }
     if (chat.buttons) {
-      const buttons = chat.buttons.map(b => ({text: b.name}))
-      extraParams.reply_markup = { keyboard: [buttons], resize_keyboard: true };
+      const buttonRows: { text: string }[][] = [[]]
+      chat.buttons.forEach(b => {
+        b.row = b.row || 1
+        const index = b.row - 1
+        buttonRows[index] = buttonRows[index] || []
+        buttonRows[index].push({ text: b.name })
+      })
+      extraParams.reply_markup = { keyboard: buttonRows, resize_keyboard: true }
     }
 
     return await sendTelegramMessage(msg.chat.id, text, extraParams)
@@ -340,11 +368,11 @@ Your username: ${msg.from?.username}`)
       onMessage(ctx) // специально без await
     }
 
-    if (threads[msg.chat.id].partialAnswer !== '') {
+    if (thread.partialAnswer !== '') {
       // flush partial answer
-      const answer = `Бот ответил частично и забыл диалог:\n\n${error.message}\n\n${threads[msg.chat.id].partialAnswer}`
+      const answer = `Бот ответил частично и забыл диалог:\n\n${error.message}\n\n${thread.partialAnswer}`
       forgetHistory(msg.chat.id)
-      threads[msg.chat.id].partialAnswer = ''
+      thread.partialAnswer = ''
       return await sendTelegramMessage(msg.chat.id, answer, extraMessageParams)
     } else {
       return await sendTelegramMessage(msg.chat.id, `${error.message}${ctx.secondTry ? '\n\nПовторная отправка последнего сообщения...' : ''}`, extraMessageParams)
