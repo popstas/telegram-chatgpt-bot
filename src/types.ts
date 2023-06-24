@@ -14,12 +14,26 @@ export type ConfigChatType = {
   memoryless?: boolean
 }
 
+export type GPTFunction = {
+  name: string
+  description: string
+  parameters: {
+    type: "object",
+    properties: {[key: string]: {
+      type: string
+      description: string
+    }}
+    required: string[]
+  }
+}
+
 export type CompletionParamsType = {
   model: string
   temperature?: number
   top_p?: number
   presence_penalty?: number
   max_tokens: number
+  functions: GPTFunction[]
 }
 
 export type ConfigType = {
