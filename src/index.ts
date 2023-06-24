@@ -206,22 +206,29 @@ async function onMessage (ctx: Context & { secondTry?: boolean }) {
       return
     }
 
+    // default chat, with name 'default'
+    const defaultChat = config.chats.find(c => c.name === 'default')
+    // console.log("defaultChat:", defaultChat);
+    if (defaultChat) chat = defaultChat
+
     if (ctxChat?.type === 'private') {
-      const isAllowed = config.allowedPrivateUsers?.includes(ctxChat?.username || '')
+      const privateChat = ctxChat as Chat.PrivateChat
+      const isAllowed = config.allowedPrivateUsers?.includes(privateChat.username || '')
       if (!isAllowed) {
         console.log(`Not in whitelist: }`, msg.from)
         return await ctx.telegram.sendMessage(ctxChat.id, `You are not allowed to use this bot.
 Your username: ${msg.from?.username}`)
       }
+
+      // user chat, with username
+      const userChat = config.chats.find(c => c.username === privateChat.username || '')
+      if (userChat) chat = { ...defaultChat, ...userChat }
     }
 
-    const defaultChat = config.chats.find(c => c.name === 'default')
-    // console.log("defaultChat:", defaultChat);
-    if (defaultChat) {
-      chat = defaultChat
-    }
+    if (!chat && defaultChat) chat = defaultChat
   }
 
+  // console.log('chat:', chat)
   const extraMessageParams = { reply_to_message_id: ctx.message?.message_id }
 
   // console.log("ctx.message.text:", ctx.message?.text);
@@ -294,6 +301,7 @@ Your username: ${msg.from?.username}`)
     threads[msg.chat.id].partialAnswer = ''
     if (config.debug) console.log('res:', res)
     if (!chat?.memoryless) threads[msg.chat.id].lastAnswer = res
+    // console.log("res:", res);
 
     // if (!ctx.message || !msg.chat) return;
     const text = telegramifyMarkdown(res?.text || 'бот не ответил')

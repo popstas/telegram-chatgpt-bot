@@ -4,6 +4,7 @@ import { Message } from 'telegraf/types'
 export type ConfigChatType = {
   name: string
   id: number
+  username?: string
   prefix?: string
   progPrefix?: string
   progInfoPrefix?: string
