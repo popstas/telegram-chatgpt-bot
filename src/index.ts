@@ -8,8 +8,16 @@ import { ChatGPTAPI, ChatGPTError } from 'chatgpt'
 import debounce from 'lodash.debounce'
 import throttle from 'lodash.throttle'
 import { watchFile } from 'fs'
-import { ConfigType, ConfigChatType, ThreadStateType, CompletionParamsType, ConfigChatButtonType } from './types.js'
+import {
+  ConfigType,
+  ConfigChatType,
+  ThreadStateType,
+  CompletionParamsType,
+  ConfigChatButtonType,
+  ButtonsSyncConfigType
+} from './types.js'
 import { readConfig } from './readConfig.js'
+import { GoogleSpreadsheet, ServiceAccountCredentials } from 'google-spreadsheet'
 
 const threads = {} as { [key: number]: ThreadStateType }
 
@@ -79,6 +87,7 @@ function addToHistory ({ msg, systemMessage, completionParams }: {
       partialAnswer: '',
       customSystemMessage: systemMessage || config.systemMessage,
       completionParams: completionParams || config.completionParams,
+      buttons: [],
     }
   }
   threads[key].history.push(msg)
@@ -248,10 +257,11 @@ Your username: ${msg.from?.username}`)
   // replace msg.text to button.prompt if match button.name
   let matchedButton: ConfigChatButtonType | undefined = undefined
   const activeButton = thread.activeButton
-  if (chat.buttons) {
+  const buttons = thread.buttons.length > 0 ? thread.buttons : chat.buttons;
+  if (buttons) {
 
     // message == button.name
-    matchedButton = chat.buttons.find(b => b.name === msg?.text || '')
+    matchedButton = buttons.find(b => b.name === msg?.text || '')
     if (matchedButton) {
       msg.text = matchedButton.prompt || ''
 
@@ -301,6 +311,13 @@ Your username: ${msg.from?.username}`)
     }
   }
 
+  // sync with google sheet
+  if (chat.buttonsSync && msg.text === 'sync') {
+    const buttons = await syncButtons(chat.buttonsSync)
+    if (buttons) thread.buttons = buttons
+    return await sendTelegramMessage(msg.chat.id, 'Готово: ' + buttons.map(b => b.name).join(', '))
+  }
+
   // prog info system message
   if (chat.progInfoPrefix) {
     const re = new RegExp(`^${chat.progInfoPrefix}`, 'i')
@@ -343,12 +360,16 @@ Your username: ${msg.from?.username}`)
     }
     if (chat.buttons) {
       const buttonRows: { text: string }[][] = [[]]
-      chat.buttons.forEach(b => {
+      const buttons = thread.buttons.length > 0 ? thread.buttons : chat.buttons
+      // console.log("thread.buttons:", thread.buttons);
+      // console.log("chat.buttons:", chat.buttons);
+      buttons.forEach(b => {
         b.row = b.row || 1
         const index = b.row - 1
         buttonRows[index] = buttonRows[index] || []
         buttonRows[index].push({ text: b.name })
       })
+      // console.log("buttonRows:", buttonRows);
       extraParams.reply_markup = { keyboard: buttonRows, resize_keyboard: true }
     }
 
@@ -378,4 +399,39 @@ Your username: ${msg.from?.username}`)
       return await sendTelegramMessage(msg.chat.id, `${error.message}${ctx.secondTry ? '\n\nПовторная отправка последнего сообщения...' : ''}`, extraMessageParams)
     }
   }
+}
+
+async function syncButtons (config: ButtonsSyncConfigType) {
+  const sheet = await loadSheet(config)
+  const rows = await sheet.getRows()
+  const buttons: ConfigChatButtonType[] = []
+  for (let row of rows) {
+    const button: ConfigChatButtonType = {
+      name: row._rawData[0],
+      prompt: row._rawData[1],
+      row: row._rawData[2],
+      waitMessage: row._rawData[3],
+    }
+    buttons.push(button)
+  }
+  // console.log('buttons:', buttons)
+  return buttons
+}
+
+async function loadSheet (config: ButtonsSyncConfigType) {
+  // load doc, sheet, rows
+  const doc = new GoogleSpreadsheet(config.sheetId)
+  await doc.useServiceAccountAuth(config.auth)
+  await doc.loadInfo()
+
+  const sheet = doc.sheetsByTitle[config.sheetName] // or use doc.sheetsById[id] or doc.sheetsByTitle[title]
+  // const rows = await sheet.getRows();
+  await sheet.loadCells({
+    startRowIndex: 0,
+    startColumnIndex: 0,
+    endRowIndex: 100,
+    endColumnIndex: 100,
+  })
+
+  return sheet
 }

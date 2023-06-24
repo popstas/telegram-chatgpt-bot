@@ -34,6 +34,12 @@ chats:
         prompt: |
           Summarize text. Text:
         waitMessage: Please, enter the text
+    buttonsSync:
+      sheetId: google-doc-id
+      sheetName: gpt prompts telegram
+      auth:
+        client_email: user@gserviceaccount.com
+        private_key: "-----BEGIN PRIVATE KEY-----\n-----END PRIVATE KEY-----\n"
 
   - name: Chat 2
     id:

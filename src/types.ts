@@ -1,5 +1,12 @@
 import { ChatMessage } from 'chatgpt'
 import { Message } from 'telegraf/types'
+import { ServiceAccountCredentials } from 'google-spreadsheet'
+
+export type ButtonsSyncConfigType = {
+  sheetId: string
+  sheetName: string
+  auth: ServiceAccountCredentials
+}
 
 export type ConfigChatType = {
   name: string
@@ -14,6 +21,7 @@ export type ConfigChatType = {
   debug?: boolean
   memoryless?: boolean
   buttons?: ConfigChatButtonType[]
+  buttonsSync: ButtonsSyncConfigType
 }
 
 export type GPTFunction = {
@@ -55,6 +63,7 @@ export type ConfigType = {
 }
 
 export type ThreadStateType = {
+  buttons: ConfigChatButtonType[]
   lastAnswer?: ChatMessage
   partialAnswer: string
   history: Message.TextMessage[]
