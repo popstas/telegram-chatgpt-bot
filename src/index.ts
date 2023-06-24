@@ -8,7 +8,7 @@ import { ChatGPTAPI, ChatGPTError } from 'chatgpt'
 import debounce from 'lodash.debounce'
 import throttle from 'lodash.throttle'
 import { watchFile } from 'fs'
-import { ConfigType, ConfigChatType, ThreadStateType, CompletionParamsType } from './types.js'
+import { ConfigType, ConfigChatType, ThreadStateType, CompletionParamsType, ConfigChatButtonType } from './types.js'
 import { readConfig } from './readConfig.js'
 
 const threads = {} as { [key: number]: ThreadStateType }
@@ -238,8 +238,18 @@ Your username: ${msg.from?.username}`)
     completionParams: chat.completionParams,
   })
 
+  // replace msg.text to button.prompt if match button.name
+  let matchedButton: ConfigChatButtonType | undefined = undefined;
+  if (chat.buttons) {
+    matchedButton = chat.buttons.find(b => b.name === msg?.text || "");
+    if (matchedButton) {
+      const prompt = matchedButton.prompt || "";
+      msg.text = prompt;
+    }
+  }
+
   // answer only to prefixed message
-  if (chat.prefix) {
+  if (chat.prefix && !matchedButton) {
     const re = new RegExp(`^${chat.prefix}`, 'i')
     const isBot = re.test(msg.text)
     if (!isBot) {
@@ -291,15 +301,6 @@ Your username: ${msg.from?.username}`)
     if (isForget) {
       forgetHistory(msg.chat.id)
       return await ctx.telegram.sendMessage(msg.chat.id, 'OK')
-    }
-  }
-
-  // replace msg.text to button.prompt if match button.name
-  if (chat.buttons) {
-    const button = chat.buttons.find(b => b.name === msg?.text || "");
-    if (button) {
-      const prompt = button.prompt || "";
-      msg.text = prompt;
     }
   }
 
