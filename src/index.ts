@@ -294,6 +294,15 @@ Your username: ${msg.from?.username}`)
     }
   }
 
+  // replace msg.text to button.prompt if match button.name
+  if (chat.buttons) {
+    const button = chat.buttons.find(b => b.name === msg?.text || "");
+    if (button) {
+      const prompt = button.prompt || "";
+      msg.text = prompt;
+    }
+  }
+
   // send request to chatgpt
   try {
     threads[msg.chat.id].partialAnswer = ''
@@ -305,7 +314,16 @@ Your username: ${msg.from?.username}`)
 
     // if (!ctx.message || !msg.chat) return;
     const text = telegramifyMarkdown(res?.text || 'бот не ответил')
-    return await sendTelegramMessage(msg.chat.id, text, { ...extraMessageParams, ...{ parse_mode: 'MarkdownV2' } })
+    const extraParams: any = {
+      ...extraMessageParams,
+      ...{ parse_mode: 'MarkdownV2' }
+    }
+    if (chat.buttons) {
+      const buttons = chat.buttons.map(b => ({text: b.name}))
+      extraParams.reply_markup = { keyboard: [buttons], resize_keyboard: true };
+    }
+
+    return await sendTelegramMessage(msg.chat.id, text, extraParams)
   } catch (e) {
     const error = e as ChatGPTError & { message: string }
     console.log('error:', error)

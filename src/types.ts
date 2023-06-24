@@ -13,17 +13,20 @@ export type ConfigChatType = {
   completionParams?: CompletionParamsType
   debug?: boolean
   memoryless?: boolean
+  buttons?: ConfigChatButtonType[]
 }
 
 export type GPTFunction = {
   name: string
   description: string
   parameters: {
-    type: "object",
-    properties: {[key: string]: {
-      type: string
-      description: string
-    }}
+    type: 'object',
+    properties: {
+      [key: string]: {
+        type: string
+        description: string
+      }
+    }
     required: string[]
   }
 }
@@ -57,4 +60,9 @@ export type ThreadStateType = {
   history: Message.TextMessage[]
   customSystemMessage?: string
   completionParams?: CompletionParamsType
+}
+
+export type ConfigChatButtonType = {
+  name: string
+  prompt: string
 }
