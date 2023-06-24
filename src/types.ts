@@ -22,6 +22,7 @@ export type ConfigChatType = {
   memoryless?: boolean
   buttons?: ConfigChatButtonType[]
   buttonsSync: ButtonsSyncConfigType
+  buttonsSynced: ConfigChatButtonType[]
 }
 
 export type GPTFunction = {
@@ -63,7 +64,6 @@ export type ConfigType = {
 }
 
 export type ThreadStateType = {
-  buttons: ConfigChatButtonType[]
   lastAnswer?: ChatMessage
   partialAnswer: string
   history: Message.TextMessage[]

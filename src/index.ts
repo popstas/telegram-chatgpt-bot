@@ -16,8 +16,8 @@ import {
   ConfigChatButtonType,
   ButtonsSyncConfigType
 } from './types.js'
-import { readConfig } from './readConfig.js'
-import { GoogleSpreadsheet, ServiceAccountCredentials } from 'google-spreadsheet'
+import { readConfig, writeConfig } from './config.ts'
+import { GoogleSpreadsheet } from 'google-spreadsheet'
 
 const threads = {} as { [key: number]: ThreadStateType }
 
@@ -67,7 +67,7 @@ function start () {
     // bot.on('channel_post', onMessage);
     process.once('SIGINT', () => bot.stop('SIGINT'))
     process.once('SIGTERM', () => bot.stop('SIGTERM'))
-    bot.launch()
+    void bot.launch()
   } catch (e) {
     console.log('restart after 5 seconds...')
     setTimeout(start, 5000)
@@ -87,7 +87,6 @@ function addToHistory ({ msg, systemMessage, completionParams }: {
       partialAnswer: '',
       customSystemMessage: systemMessage || config.systemMessage,
       completionParams: completionParams || config.completionParams,
-      buttons: [],
     }
   }
   threads[key].history.push(msg)
@@ -124,7 +123,7 @@ function getChatgptAnswer (msg: Message.TextMessage, chatConfig: ConfigChatType)
       // avoid send typing after answer
       if (!typingSent || thread.partialAnswer != '') {
         typingSent = true
-        bot.telegram.sendChatAction(msg.chat.id, 'typing')
+        void bot.telegram.sendChatAction(msg.chat.id, 'typing')
       }
 
       thread.partialAnswer += partialResponse.text
@@ -257,7 +256,7 @@ Your username: ${msg.from?.username}`)
   // replace msg.text to button.prompt if match button.name
   let matchedButton: ConfigChatButtonType | undefined = undefined
   const activeButton = thread.activeButton
-  const buttons = thread.buttons.length > 0 ? thread.buttons : chat.buttons;
+  const buttons = chat.buttonsSynced || chat.buttons
   if (buttons) {
 
     // message == button.name
@@ -311,11 +310,11 @@ Your username: ${msg.from?.username}`)
     }
   }
 
-  // sync with google sheet
+  // sync with Google sheet
   if (chat.buttonsSync && msg.text === 'sync') {
-    const buttons = await syncButtons(chat.buttonsSync)
-    if (buttons) thread.buttons = buttons
-    return await sendTelegramMessage(msg.chat.id, 'Готово: ' + buttons.map(b => b.name).join(', '))
+    const buttons = await syncButtons(chat)
+    const answer = buttons ? 'Готово: ' + buttons.map(b => b.name).join(', ') : 'Ошибка синхронизации';
+    return await sendTelegramMessage(msg.chat.id, answer)
   }
 
   // prog info system message
@@ -360,7 +359,7 @@ Your username: ${msg.from?.username}`)
     }
     if (chat.buttons) {
       const buttonRows: { text: string }[][] = [[]]
-      const buttons = thread.buttons.length > 0 ? thread.buttons : chat.buttons
+      const buttons = chat.buttonsSynced || chat.buttons
       // console.log("thread.buttons:", thread.buttons);
       // console.log("chat.buttons:", chat.buttons);
       buttons.forEach(b => {
@@ -386,7 +385,7 @@ Your username: ${msg.from?.username}`)
     if (!ctx.secondTry && error.message.includes('context_length_exceeded')) {
       ctx.secondTry = true
       forgetHistory(msg.chat.id)
-      onMessage(ctx) // специально без await
+      void onMessage(ctx) // специально без await
     }
 
     if (thread.partialAnswer !== '') {
@@ -401,7 +400,25 @@ Your username: ${msg.from?.username}`)
   }
 }
 
-async function syncButtons (config: ButtonsSyncConfigType) {
+async function syncButtons (chat: ConfigChatType) {
+  // console.log("syncButtons...");
+  const syncConfig = chat.buttonsSync;
+  const buttons = await getGoogleButtons(syncConfig)
+  // console.log("buttons:", buttons);
+  if (!buttons) return
+
+  chat.buttonsSynced = buttons
+
+  config = readConfig(configPath)
+  const chatIndex = config.chats.findIndex(c => c.name === chat.name);
+
+  config.chats[chatIndex] = chat;
+  writeConfig(configPath, config);
+
+  return buttons;
+}
+
+async function getGoogleButtons (config: ButtonsSyncConfigType) {
   const sheet = await loadSheet(config)
   const rows = await sheet.getRows()
   const buttons: ConfigChatButtonType[] = []
