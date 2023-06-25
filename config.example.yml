@@ -1,6 +1,12 @@
 bot_name: _bot
 debug: true
 timeoutMs: 60000
+helpText: |
+  This is a bot for OpenAI GPT-3 API.
+  You can chat with it or use it as a completion service.
+  Commands:
+  /help - show this help
+  /reset - forget all your messages
 
 auth:
   bot_token:

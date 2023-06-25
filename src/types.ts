@@ -55,7 +55,8 @@ export type ConfigType = {
   auth: {
     bot_token: string
     chatgpt_api_key: string
-  },
+  }
+  helpText: string
   googleAuth: ServiceAccountCredentials
   systemMessage?: string
   timeoutMs?: number

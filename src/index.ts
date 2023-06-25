@@ -63,15 +63,82 @@ function start () {
 
     bot = new Telegraf(config.auth.bot_token)
     console.log('bot started')
-    bot.on([message('text'), editedMessage('text')], onMessage)
     // bot.on('channel_post', onMessage);
+
+    bot.help(async ctx => ctx.reply(config.helpText))
+
+    bot.command('reset', async ctx => {
+      forgetHistory(ctx.chat.id)
+      return await ctx.telegram.sendMessage(ctx.chat.id, 'OK')
+    })
+
+    bot.command('info', async ctx => {
+      const chat = getChatConfig(ctx.chat)
+      if (!chat) return
+      const answer = getInfoMessage(chat)
+      return sendTelegramMessage(ctx.chat.id, answer)
+    })
+
+    bot.on([message('text'), editedMessage('text')], onMessage)
+
     process.once('SIGINT', () => bot.stop('SIGINT'))
     process.once('SIGTERM', () => bot.stop('SIGTERM'))
     void bot.launch()
+
+    bot.telegram.setMyCommands([
+      {
+        command: '/help',
+        description: 'Показать справку',
+      },
+      {
+        command: '/reset',
+        description: 'Забыть историю сообщений',
+      },
+      {
+        command: '/info',
+        description: 'Начальные установки',
+      },
+      // {
+      //   command: "/prog",
+      //   description: "Изменить начальные установки",
+      // },
+    ])
+
   } catch (e) {
     console.log('restart after 5 seconds...')
     setTimeout(start, 5000)
   }
+}
+
+function getChatConfig (ctxChat: Chat) {
+  let chat = config.chats.find(c => c.id == ctxChat?.id || 0) || {} as ConfigChatType
+  if (!chat.id) {
+    // console.log("ctxChat:", ctxChat);
+    if (ctxChat?.type !== 'private') {
+      console.log(`This is ${ctxChat?.type} chat, not in whitelist: ${ctxChat.id}`)
+      return
+    }
+
+    // default chat, with name 'default'
+    const defaultChat = config.chats.find(c => c.name === 'default')
+    // console.log("defaultChat:", defaultChat);
+    if (defaultChat) chat = defaultChat
+
+    if (ctxChat?.type === 'private') {
+      const privateChat = ctxChat as Chat.PrivateChat
+      const isAllowed = config.allowedPrivateUsers?.includes(privateChat.username || '')
+      if (!isAllowed) {
+        return
+      }
+
+      // user chat, with username
+      const userChat = config.chats.find(c => c.username === privateChat.username || '')
+      if (userChat) chat = { ...defaultChat, ...userChat }
+    }
+
+    if (!chat && defaultChat) chat = defaultChat
+  }
+  return chat
 }
 
 function addToHistory ({ msg, systemMessage, completionParams }: {
@@ -93,7 +160,7 @@ function addToHistory ({ msg, systemMessage, completionParams }: {
 }
 
 function forgetHistory (chatId: number) {
-  threads[chatId].lastAnswer = undefined
+  if (threads[chatId]) threads[chatId].lastAnswer = undefined
 }
 
 /*function getHistory(msg: Context) {
@@ -208,6 +275,16 @@ function prettyText (text: string): string {
   return prettyText
 }
 
+function getInfoMessage (chat: ConfigChatType) {
+  const systemMessage = getSystemMessage(chat)
+  const tokens = getTokensCount(systemMessage)
+  let answer = 'Начальная установка: ' + systemMessage + '\n' + 'Токенов: ' + tokens + '\n'
+  if (chat.completionParams?.model) {
+    answer = `Модель: ${chat.completionParams.model}\n\n` + answer
+  }
+  return answer
+}
+
 async function onMessage (ctx: Context & { secondTry?: boolean }) {
   // console.log("ctx:", ctx);
 
@@ -236,34 +313,12 @@ async function onMessage (ctx: Context & { secondTry?: boolean }) {
     return
   }
 
-  let chat = config.chats.find(c => c.id == ctxChat?.id || 0) || {} as ConfigChatType
-  if (!chat.id) {
-    // console.log("ctxChat:", ctxChat);
-    if (ctxChat?.type !== 'private') {
-      console.log(`This is ${ctxChat?.type} chat, not in whitelist: ${ctxChat.id}`)
-      return
-    }
+  const chat = getChatConfig(ctxChat)
 
-    // default chat, with name 'default'
-    const defaultChat = config.chats.find(c => c.name === 'default')
-    // console.log("defaultChat:", defaultChat);
-    if (defaultChat) chat = defaultChat
-
-    if (ctxChat?.type === 'private') {
-      const privateChat = ctxChat as Chat.PrivateChat
-      const isAllowed = config.allowedPrivateUsers?.includes(privateChat.username || '')
-      if (!isAllowed) {
-        console.log(`Not in whitelist: }`, msg.from)
-        return await ctx.telegram.sendMessage(ctxChat.id, `You are not allowed to use this bot.
-Your username: ${msg.from?.username}`)
-      }
-
-      // user chat, with username
-      const userChat = config.chats.find(c => c.username === privateChat.username || '')
-      if (userChat) chat = { ...defaultChat, ...userChat }
-    }
-
-    if (!chat && defaultChat) chat = defaultChat
+  if (!chat) {
+    console.log(`Not in whitelist: }`, msg.from)
+    return await ctx.telegram.sendMessage(ctxChat.id, `You are not allowed to use this bot.
+Your username: ${msg.from?.username}, chat id: ${msg.chat.id}`)
   }
 
   // console.log('chat:', chat)
@@ -304,10 +359,10 @@ Your username: ${msg.from?.username}`)
     }
   }
 
-  const splitSentense = "Separate text into paragraphs.";
-  const isSplit = msg.text.includes(splitSentense);
+  const splitSentense = 'Separate text into paragraphs.'
+  const isSplit = msg.text.includes(splitSentense)
   if (isSplit) {
-    msg.text = msg.text.replace(splitSentense, "");
+    msg.text = msg.text.replace(splitSentense, '')
   }
 
   // answer only to prefixed message
@@ -360,12 +415,7 @@ Your username: ${msg.from?.username}`)
     const re = new RegExp(`^${chat.progInfoPrefix}`, 'i')
     const isProg = re.test(msg.text)
     if (isProg) {
-      const systemMessage = getSystemMessage(chat)
-      const tokens = getTokensCount(systemMessage)
-      let answer = 'Начальная установка: ' + systemMessage + '\n' + 'Токенов: ' + tokens + '\n'
-      if (chat.completionParams?.model) {
-        answer = `Модель: ${chat.completionParams.model}\n\n` + answer
-      }
+      const answer = getInfoMessage(chat)
       return sendTelegramMessage(msg.chat.id, answer)
     }
   }
