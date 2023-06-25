@@ -113,7 +113,8 @@ function getChatgptAnswer (msg: Message.TextMessage, chatConfig: ConfigChatType)
   const date = new Date().toISOString()
   systemMessage = systemMessage.replace(/\{date}/g, date)
 
-  let typingSent = false
+  // let typingSent = false
+
   return api.sendMessage(msg.text, {
     name: `${msg.from?.username}`,
     parentMessageId: thread.lastAnswer?.id,
@@ -121,10 +122,10 @@ function getChatgptAnswer (msg: Message.TextMessage, chatConfig: ConfigChatType)
     completionParams: thread.completionParams || config.completionParams,
     onProgress: throttle((partialResponse) => {
       // avoid send typing after answer
-      if (!typingSent || thread.partialAnswer != '') {
+      /*if (!typingSent || thread.partialAnswer != '') {
         typingSent = true
         void bot.telegram.sendChatAction(msg.chat.id, 'typing')
-      }
+      }*/
 
       thread.partialAnswer += partialResponse.text
       // console.log(partialResponse.text);
@@ -181,6 +182,30 @@ async function sendTelegramMessage (chat_id: number, text: string, extraMessageP
 function getTokensCount (text: string) {
   const tokenizer = getEncoding('cl100k_base')
   return tokenizer.encode(text).length
+}
+
+function prettyText (text: string): string {
+  const paragraphs = []
+  const sentences = text.split(/\.[ \n]/g)
+  // console.log("sentences:", sentences.length);
+  let paragraph = ''
+  while (sentences.length > 0) {
+    paragraph += sentences.shift() + '. '
+    paragraph = paragraph.replace(/\.\. $/, '. ') // remove ..
+
+    if (paragraph.length > 200) {
+      paragraphs.push(paragraph.trim() + '')
+      // console.log("zero paragraph:", paragraph);
+      paragraph = ''
+    }
+  }
+  if (paragraph.length > 0) {
+    paragraphs.push(paragraph.trim() + '')
+  }
+  // console.log("paragraphs", paragraphs);
+
+  const prettyText = paragraphs.join('\n\n')
+  return prettyText
 }
 
 async function onMessage (ctx: Context & { secondTry?: boolean }) {
@@ -279,6 +304,12 @@ Your username: ${msg.from?.username}`)
     }
   }
 
+  const splitSentense = "Separate text into paragraphs.";
+  const isSplit = msg.text.includes(splitSentense);
+  if (isSplit) {
+    msg.text = msg.text.replace(splitSentense, "");
+  }
+
   // answer only to prefixed message
   if (chat.prefix && !matchedButton && !activeButton) {
     const re = new RegExp(`^${chat.prefix}`, 'i')
@@ -313,8 +344,15 @@ Your username: ${msg.from?.username}`)
   // sync with Google sheet
   if (chat.buttonsSync && msg.text === 'sync') {
     const buttons = await syncButtons(chat)
-    const answer = buttons ? 'Готово: ' + buttons.map(b => b.name).join(', ') : 'Ошибка синхронизации'
-    return await sendTelegramMessage(msg.chat.id, answer)
+    if (!buttons) {
+      return await sendTelegramMessage(msg.chat.id, 'Ошибка синхронизации')
+    }
+
+    const buttonRows = buildButtonRows(buttons)
+    // console.log("buttonRows:", buttonRows);
+    const extraParams = { reply_markup: { keyboard: buttonRows, resize_keyboard: true } }
+    const answer = 'Готово: ' + buttons.map(b => b.name).join(', ')
+    return await sendTelegramMessage(msg.chat.id, answer, extraParams)
   }
 
   // prog info system message
@@ -344,35 +382,35 @@ Your username: ${msg.from?.username}`)
 
   // send request to chatgpt
   try {
-    thread.partialAnswer = ''
-    const res = await getChatgptAnswer(msg, chat)
-    thread.partialAnswer = ''
-    if (config.debug) console.log('res:', res)
-    if (!chat?.memoryless) thread.lastAnswer = res
-    // console.log("res:", res);
+    await ctx.persistentChatAction('typing', async () => {
+      if (!msg) return
+      thread.partialAnswer = ''
+      const res = await getChatgptAnswer(msg, chat)
+      thread.partialAnswer = ''
+      if (config.debug) console.log('res:', res)
+      if (!chat?.memoryless) thread.lastAnswer = res
+      // console.log("res:", res);
 
-    // if (!ctx.message || !msg.chat) return;
-    const text = telegramifyMarkdown(res?.text || 'бот не ответил')
-    const extraParams: any = {
-      ...extraMessageParams,
-      ...{ parse_mode: 'MarkdownV2' }
-    }
-    if (chat.buttons) {
-      const buttonRows: { text: string }[][] = [[]]
+      let text = res?.text || 'бот не ответил'
+      if (isSplit) {
+        text = prettyText(text)
+      }
+      // if (!ctx.message || !msg.chat) return;
+      text = telegramifyMarkdown(text)
+
+      const extraParams: any = {
+        ...extraMessageParams,
+        ...{ parse_mode: 'MarkdownV2' }
+      }
       const buttons = chat.buttonsSynced || chat.buttons
-      // console.log("thread.buttons:", thread.buttons);
-      // console.log("chat.buttons:", chat.buttons);
-      buttons.forEach(b => {
-        b.row = b.row || 1
-        const index = b.row - 1
-        buttonRows[index] = buttonRows[index] || []
-        buttonRows[index].push({ text: b.name })
-      })
-      // console.log("buttonRows:", buttonRows);
-      extraParams.reply_markup = { keyboard: buttonRows, resize_keyboard: true }
-    }
+      if (buttons) {
+        const buttonRows = buildButtonRows(buttons)
+        // console.log("buttonRows:", buttonRows);
+        extraParams.reply_markup = { keyboard: buttonRows, resize_keyboard: true }
+      }
 
-    return await sendTelegramMessage(msg.chat.id, text, extraParams)
+      void await sendTelegramMessage(msg.chat.id, text, extraParams)
+    }) // all done, stops sending typing
   } catch (e) {
     const error = e as ChatGPTError & { message: string }
     console.log('error:', error)
@@ -416,6 +454,19 @@ async function syncButtons (chat: ConfigChatType) {
   writeConfig(configPath, config)
 
   return buttons
+}
+
+function buildButtonRows (buttons: ConfigChatButtonType[]) {
+  const buttonRows: { text: string }[][] = [[]]
+  // console.log("thread.buttons:", thread.buttons);
+  // console.log("chat.buttons:", chat.buttons);
+  buttons.forEach(b => {
+    b.row = b.row || 1
+    const index = b.row - 1
+    buttonRows[index] = buttonRows[index] || []
+    buttonRows[index].push({ text: b.name })
+  })
+  return buttonRows
 }
 
 async function getGoogleButtons (syncConfig: ButtonsSyncConfigType) {

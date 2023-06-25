@@ -42,7 +42,7 @@ chats:
       - name: summarize
         row: 2 # row in telegram buttons keyboard
         prompt: |
-          Summarize text. Text:
+          Summarize text. Divide text into paragraphs. Text:
         waitMessage: Please, enter the text
     buttonsSync:
       sheetId: google-doc-id
