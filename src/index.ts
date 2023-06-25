@@ -313,7 +313,7 @@ Your username: ${msg.from?.username}`)
   // sync with Google sheet
   if (chat.buttonsSync && msg.text === 'sync') {
     const buttons = await syncButtons(chat)
-    const answer = buttons ? 'Готово: ' + buttons.map(b => b.name).join(', ') : 'Ошибка синхронизации';
+    const answer = buttons ? 'Готово: ' + buttons.map(b => b.name).join(', ') : 'Ошибка синхронизации'
     return await sendTelegramMessage(msg.chat.id, answer)
   }
 
@@ -402,7 +402,7 @@ Your username: ${msg.from?.username}`)
 
 async function syncButtons (chat: ConfigChatType) {
   // console.log("syncButtons...");
-  const syncConfig = chat.buttonsSync;
+  const syncConfig = chat.buttonsSync
   const buttons = await getGoogleButtons(syncConfig)
   // console.log("buttons:", buttons);
   if (!buttons) return
@@ -410,16 +410,21 @@ async function syncButtons (chat: ConfigChatType) {
   chat.buttonsSynced = buttons
 
   config = readConfig(configPath)
-  const chatIndex = config.chats.findIndex(c => c.name === chat.name);
+  const chatIndex = config.chats.findIndex(c => c.name === chat.name)
 
-  config.chats[chatIndex] = chat;
-  writeConfig(configPath, config);
+  config.chats[chatIndex] = chat
+  writeConfig(configPath, config)
 
-  return buttons;
+  return buttons
 }
 
 async function getGoogleButtons (syncConfig: ButtonsSyncConfigType) {
   const sheet = await loadSheet(syncConfig)
+  if (!sheet) {
+    console.error(`Failed to load sheet "${syncConfig.sheetName}"`)
+    return
+  }
+
   const rows = await sheet.getRows()
   const buttons: ConfigChatButtonType[] = []
   for (let row of rows) {
@@ -443,6 +448,11 @@ async function loadSheet (syncConfig: ButtonsSyncConfigType) {
 
   const sheet = doc.sheetsByTitle[syncConfig.sheetName] // or use doc.sheetsById[id] or doc.sheetsByTitle[title]
   // const rows = await sheet.getRows();
+
+  if (!sheet) {
+    return
+  }
+
   await sheet.loadCells({
     startRowIndex: 0,
     startColumnIndex: 0,
