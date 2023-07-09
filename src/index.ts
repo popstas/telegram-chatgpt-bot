@@ -1,13 +1,13 @@
-import { Telegraf, Context } from 'telegraf'
-import { message, editedMessage } from 'telegraf/filters'
-import { getEncoding } from 'js-tiktoken'
+import {Telegraf, Context} from 'telegraf'
+import {message, editedMessage} from 'telegraf/filters'
+import {getEncoding} from 'js-tiktoken'
 import telegramifyMarkdown from 'telegramify-markdown'
-import { Message, Chat, Update } from 'telegraf/types'
-import { ChatGPTAPI, ChatGPTError } from 'chatgpt'
+import {Message, Chat, Update} from 'telegraf/types'
+import {ChatGPTAPI, ChatGPTError} from 'chatgpt'
 // import { oraPromise } from 'ora';
 import debounce from 'lodash.debounce'
 import throttle from 'lodash.throttle'
-import { watchFile } from 'fs'
+import {watchFile} from 'fs'
 import {
   ConfigType,
   ConfigChatType,
@@ -16,8 +16,8 @@ import {
   ConfigChatButtonType,
   ButtonsSyncConfigType
 } from './types.js'
-import { readConfig, writeConfig } from './config.ts'
-import { GoogleSpreadsheet } from 'google-spreadsheet'
+import {readConfig, writeConfig} from './config.ts'
+import {GoogleSpreadsheet} from 'google-spreadsheet'
 
 const threads = {} as { [key: number]: ThreadStateType }
 
@@ -50,7 +50,7 @@ process.on('uncaughtException', (error, source) => {
 
 start()
 
-function start () {
+function start() {
   config = readConfig(configPath)
 
   try {
@@ -67,7 +67,7 @@ function start () {
 
     bot.help(async ctx => ctx.reply(config.helpText))
 
-    bot.command('reset', async ctx => {
+    bot.command('forget', async ctx => {
       forgetHistory(ctx.chat.id)
       return await ctx.telegram.sendMessage(ctx.chat.id, 'OK')
     })
@@ -91,7 +91,7 @@ function start () {
         description: 'Показать справку',
       },
       {
-        command: '/reset',
+        command: '/forget',
         description: 'Забыть историю сообщений',
       },
       {
@@ -110,7 +110,7 @@ function start () {
   }
 }
 
-function getChatConfig (ctxChat: Chat) {
+function getChatConfig(ctxChat: Chat) {
   let chat = config.chats.find(c => c.id == ctxChat?.id || 0) || {} as ConfigChatType
   if (!chat.id) {
     // console.log("ctxChat:", ctxChat);
@@ -133,7 +133,7 @@ function getChatConfig (ctxChat: Chat) {
 
       // user chat, with username
       const userChat = config.chats.find(c => c.username === privateChat.username || '')
-      if (userChat) chat = { ...defaultChat, ...userChat }
+      if (userChat) chat = {...defaultChat, ...userChat}
     }
 
     if (!chat && defaultChat) chat = defaultChat
@@ -141,7 +141,7 @@ function getChatConfig (ctxChat: Chat) {
   return chat
 }
 
-function addToHistory ({ msg, systemMessage, completionParams }: {
+function addToHistory({msg, systemMessage, completionParams}: {
   msg: Message.TextMessage;
   systemMessage?: string;
   completionParams?: CompletionParamsType;
@@ -159,7 +159,7 @@ function addToHistory ({ msg, systemMessage, completionParams }: {
   threads[key].history.push(msg)
 }
 
-function forgetHistory (chatId: number) {
+function forgetHistory(chatId: number) {
   if (threads[chatId]) threads[chatId].lastAnswer = undefined
 }
 
@@ -167,7 +167,7 @@ function forgetHistory (chatId: number) {
   return threads[msg.chat?.id || 0].history || [];
 }*/
 
-function getChatgptAnswer (msg: Message.TextMessage, chatConfig: ConfigChatType) {
+function getChatgptAnswer(msg: Message.TextMessage, chatConfig: ConfigChatType) {
   if (!msg.text) return
 
   const thread = threads[msg.chat?.id || 0]
@@ -201,16 +201,16 @@ function getChatgptAnswer (msg: Message.TextMessage, chatConfig: ConfigChatType)
   })
 }
 
-function defaultSystemMessage () {
+function defaultSystemMessage() {
   return `You answer as concisely as possible for each response. If you are generating a list, do not have too many items.
 Current date: ${new Date().toISOString()}\n\n`
 }
 
-function getSystemMessage (chatConfig: ConfigChatType) {
+function getSystemMessage(chatConfig: ConfigChatType) {
   return threads[chatConfig.id]?.customSystemMessage || chatConfig.systemMessage || config.systemMessage || defaultSystemMessage()
 }
 
-function splitBigMessage (text: string) {
+function splitBigMessage(text: string) {
   const msgs: string[] = []
   const sizeLimit = 4096
   let msg = ''
@@ -226,7 +226,7 @@ function splitBigMessage (text: string) {
   return msgs
 }
 
-async function sendTelegramMessage (chat_id: number, text: string, extraMessageParams?: any) {
+async function sendTelegramMessage(chat_id: number, text: string, extraMessageParams?: any) {
   return new Promise((resolve) => {
 
     const msgs = splitBigMessage(text)
@@ -246,12 +246,12 @@ async function sendTelegramMessage (chat_id: number, text: string, extraMessageP
   })
 }
 
-function getTokensCount (text: string) {
+function getTokensCount(text: string) {
   const tokenizer = getEncoding('cl100k_base')
   return tokenizer.encode(text).length
 }
 
-function prettyText (text: string): string {
+function prettyText(text: string): string {
   const paragraphs = []
   const sentences = text.split(/\.[ \n]/g)
   // console.log("sentences:", sentences.length);
@@ -275,7 +275,7 @@ function prettyText (text: string): string {
   return prettyText
 }
 
-function getInfoMessage (chat: ConfigChatType) {
+function getInfoMessage(chat: ConfigChatType) {
   const systemMessage = getSystemMessage(chat)
   const tokens = getTokensCount(systemMessage)
   let answer = 'Начальная установка: ' + systemMessage + '\n' + 'Токенов: ' + tokens + '\n'
@@ -285,7 +285,7 @@ function getInfoMessage (chat: ConfigChatType) {
   return answer
 }
 
-async function onMessage (ctx: Context & { secondTry?: boolean }) {
+async function onMessage(ctx: Context & { secondTry?: boolean }) {
   // console.log("ctx:", ctx);
 
   let ctxChat: Chat | undefined
@@ -322,7 +322,7 @@ Your username: ${msg.from?.username}, chat id: ${msg.chat.id}`)
   }
 
   // console.log('chat:', chat)
-  const extraMessageParams = { reply_to_message_id: ctx.message?.message_id }
+  const extraMessageParams = {reply_to_message_id: ctx.message?.message_id}
 
   // console.log("ctx.message.text:", ctx.message?.text);
   addToHistory({
@@ -397,17 +397,20 @@ Your username: ${msg.from?.username}, chat id: ${msg.chat.id}`)
   }
 
   // sync with Google sheet
-  if (chat.buttonsSync && msg.text === 'sync') {
-    const buttons = await syncButtons(chat)
-    if (!buttons) {
-      return await sendTelegramMessage(msg.chat.id, 'Ошибка синхронизации')
-    }
+  if (chat.buttonsSync && msg.text === 'sync' && msg) {
+    return await ctx.persistentChatAction('typing', async () => {
+      if (!msg) return
+      const buttons = await syncButtons(chat)
+      if (!buttons) {
+        return void sendTelegramMessage(msg.chat.id, 'Ошибка синхронизации')
+      }
 
-    const buttonRows = buildButtonRows(buttons)
-    // console.log("buttonRows:", buttonRows);
-    const extraParams = { reply_markup: { keyboard: buttonRows, resize_keyboard: true } }
-    const answer = 'Готово: ' + buttons.map(b => b.name).join(', ')
-    return await sendTelegramMessage(msg.chat.id, answer, extraParams)
+      const buttonRows = buildButtonRows(buttons)
+      // console.log("buttonRows:", buttonRows);
+      const extraParams = {reply_markup: {keyboard: buttonRows, resize_keyboard: true}}
+      const answer = 'Готово: ' + buttons.map(b => b.name).join(', ')
+      return void sendTelegramMessage(msg.chat.id, answer, extraParams)
+    })
   }
 
   // prog info system message
@@ -450,13 +453,13 @@ Your username: ${msg.from?.username}, chat id: ${msg.chat.id}`)
 
       const extraParams: any = {
         ...extraMessageParams,
-        ...{ parse_mode: 'MarkdownV2' }
+        ...{parse_mode: 'MarkdownV2'}
       }
       const buttons = chat.buttonsSynced || chat.buttons
       if (buttons) {
         const buttonRows = buildButtonRows(buttons)
         // console.log("buttonRows:", buttonRows);
-        extraParams.reply_markup = { keyboard: buttonRows, resize_keyboard: true }
+        extraParams.reply_markup = {keyboard: buttonRows, resize_keyboard: true}
       }
 
       void await sendTelegramMessage(msg.chat.id, text, extraParams)
@@ -488,7 +491,7 @@ Your username: ${msg.from?.username}, chat id: ${msg.chat.id}`)
   }
 }
 
-async function syncButtons (chat: ConfigChatType) {
+async function syncButtons(chat: ConfigChatType) {
   // console.log("syncButtons...");
   const syncConfig = chat.buttonsSync
   const buttons = await getGoogleButtons(syncConfig)
@@ -506,7 +509,7 @@ async function syncButtons (chat: ConfigChatType) {
   return buttons
 }
 
-function buildButtonRows (buttons: ConfigChatButtonType[]) {
+function buildButtonRows(buttons: ConfigChatButtonType[]) {
   const buttonRows: { text: string }[][] = [[]]
   // console.log("thread.buttons:", thread.buttons);
   // console.log("chat.buttons:", chat.buttons);
@@ -514,12 +517,12 @@ function buildButtonRows (buttons: ConfigChatButtonType[]) {
     b.row = b.row || 1
     const index = b.row - 1
     buttonRows[index] = buttonRows[index] || []
-    buttonRows[index].push({ text: b.name })
+    buttonRows[index].push({text: b.name})
   })
   return buttonRows
 }
 
-async function getGoogleButtons (syncConfig: ButtonsSyncConfigType) {
+async function getGoogleButtons(syncConfig: ButtonsSyncConfigType) {
   const sheet = await loadSheet(syncConfig)
   if (!sheet) {
     console.error(`Failed to load sheet "${syncConfig.sheetName}"`)
@@ -535,13 +538,14 @@ async function getGoogleButtons (syncConfig: ButtonsSyncConfigType) {
       row: row._rawData[2],
       waitMessage: row._rawData[3],
     }
+    if (button.name.startsWith("#")) continue
     buttons.push(button)
   }
   // console.log('buttons:', buttons)
   return buttons
 }
 
-async function loadSheet (syncConfig: ButtonsSyncConfigType) {
+async function loadSheet(syncConfig: ButtonsSyncConfigType) {
   // load doc, sheet, rows
   const doc = new GoogleSpreadsheet(syncConfig.sheetId)
   await doc.useServiceAccountAuth(syncConfig.auth || config.googleAuth)
