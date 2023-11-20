@@ -19,6 +19,9 @@ import {
 import {readConfig, writeConfig} from './config.ts'
 import {GoogleSpreadsheet} from 'google-spreadsheet'
 
+import {HttpsProxyAgent} from "https-proxy-agent";
+import fetch, {RequestInit, RequestInfo} from "node-fetch";
+
 const threads = {} as { [key: number]: ThreadStateType }
 
 const configPath = process.env.CONFIG || 'config.yml'
@@ -50,8 +53,22 @@ process.on('uncaughtException', (error, source) => {
 
 start()
 
-function start() {
+async function start() {
   config = readConfig(configPath)
+
+  let proxiedFetch = fetch;
+  if (config.proxyUrl) {
+    proxiedFetch = async (input: URL | RequestInfo,
+                          init?: RequestInit | undefined
+    ) => {
+      const agent = new HttpsProxyAgent(`${config.proxyUrl}`);
+      const requestOptions: RequestInit = {
+        ...init,
+        agent,
+      };
+      return fetch(input, requestOptions);
+    };
+  }
 
   try {
     api = new ChatGPTAPI({
@@ -59,6 +76,7 @@ function start() {
       completionParams: config.completionParams,
       debug: config.debug,
       maxResponseTokens: config.completionParams.max_tokens || 0,
+      fetch: proxiedFetch,
     })
 
     bot = new Telegraf(config.auth.bot_token)
@@ -271,8 +289,7 @@ function prettyText(text: string): string {
   }
   // console.log("paragraphs", paragraphs);
 
-  const prettyText = paragraphs.join('\n\n')
-  return prettyText
+  return paragraphs.join('\n\n')
 }
 
 function getInfoMessage(chat: ConfigChatType) {

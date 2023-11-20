@@ -56,6 +56,7 @@ export type ConfigType = {
     bot_token: string
     chatgpt_api_key: string
   }
+  proxyUrl?: string
   helpText: string
   googleAuth: ServiceAccountCredentials
   systemMessage?: string

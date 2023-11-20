@@ -12,6 +12,8 @@ auth:
   bot_token:
   chatgpt_api_key:
 
+proxyUrl: http://user:pass@host:port
+
 googleAuth:
   client_email: user@gserviceaccount.com
   private_key: "-----BEGIN PRIVATE KEY-----\n-----END PRIVATE KEY-----\n"
